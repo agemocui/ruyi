@@ -1,0 +1,34 @@
+[package]
+name = "ruyi"
+version = "0.1.0"
+authors = ["Agemo Cui <agemocui@qq.com>"]
+description = """
+An event-driven framework for non-blocking, asynchronous I/O in Rust
+"""
+documentation = "https://docs.rs/ruyi"
+homepage = "https://github.com/agemocui/ruyi"
+repository = "https://github.com/agemocui/ruyi"
+readme = "README.md"
+keywords = ["io", "async", "non-blocking", "event-loop"]
+categories = ["asynchronous"]
+license = "MIT/Apache-2.0"
+exclude = [".gitignore", ".travis.yml"]
+
+[badges]
+travis-ci = { repository = "agemocui/ruyi" }
+
+[dependencies]
+futures = "0.1"
+log = "0.3"
+net2 = "0.2"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+
+[target."cfg(windows)".dependencies]
+winapi = "0.2"
+kernel32-sys = "0.2"
+
+[dev-dependencies]
+env_logger = "0.4"
+num_cpus = "1.4"
