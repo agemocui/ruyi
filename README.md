@@ -2,6 +2,10 @@
 
 Ruyi is an event-driven framework for non-blocking, asynchronous I/O in Rust powered by [futures](https://github.com/alexcrichton/futures-rs).
 
+[![crates.io](https://img.shields.io/crates/v/ruyi.svg)](https://crates.io/crates/ruyi)
+[![docs.rs](https://docs.rs/ruyi/badge.svg)](https://docs.rs/ruyi)
+[![Build Status](https://travis-ci.org/agemocui/ruyi.svg?branch=master)](https://travis-ci.org/agemocui/ruyi)
+
 ## Usage
 
 To use `ruyi`, add the following to your `Cargo.toml`:
