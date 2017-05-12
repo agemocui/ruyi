@@ -7,6 +7,7 @@ use std::option::Option;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
+use std::str;
 
 use super::nio::{IoVec, ReadV, WriteV};
 
@@ -807,6 +808,11 @@ impl ByteBuf {
     }
 
     #[inline]
+    pub fn as_hex_dump(&self) -> HexDump {
+        HexDump { inner: self }
+    }
+
+    #[inline]
     fn pos_idx(&self) -> usize {
         self.pos_idx
     }
@@ -907,12 +913,6 @@ impl ByteBuf {
     }
 }
 
-impl fmt::Display for ByteBuf {
-    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
 pub struct Reader<'a> {
     inner: &'a mut ByteBuf,
 }
@@ -999,6 +999,69 @@ impl<'a> Write for Writer<'a> {
 
     #[inline]
     fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+pub struct HexDump<'a> {
+    inner: &'a ByteBuf,
+}
+
+impl<'a> fmt::Display for HexDump<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let blocks: &[Inner] = &self.inner.blocks[self.inner.pos_idx..];
+        let mut block: &Inner;
+        let mut len;
+        let mut n = 0;
+        loop {
+            if n >= blocks.len() {
+                return Ok(());
+            }
+            block = unsafe { blocks.get_unchecked(n) };
+            len = block.len();
+            n += 1;
+            if len > 0 {
+                break;
+            }
+        }
+
+        const HM_BYTES_PER_ROW: usize = 16;
+
+        let mut addr = 0;
+        let mut ptr = block.ptr_at(block.read_pos());
+        let mut off = 0;
+        let mut asc: [u8; HM_BYTES_PER_ROW] = unsafe { mem::uninitialized() };
+        loop {
+            write!(f, "{:08X}h:", addr)?;
+            // dump one row
+            let mut i = 0;
+            'eof: while i < HM_BYTES_PER_ROW {
+                let b = unsafe { *ptr.offset(off as isize) };
+                off += 1;
+                write!(f, " {:02X}", b)?;
+                asc[i] = if (b as char).is_control() { b'.' } else { b };
+                i += 1;
+                len -= 1;
+                while len < 1 {
+                    if n >= blocks.len() {
+                        for _ in i..HM_BYTES_PER_ROW {
+                            write!(f, "   ")?;
+                        }
+                        break 'eof;
+                    }
+                    block = unsafe { blocks.get_unchecked(n) };
+                    len = block.len();
+                    ptr = block.ptr_at(block.read_pos());
+                    off = 0;
+                    n += 1;
+                }
+            }
+            writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
+            if len == 0 {
+                break;
+            }
+            addr += HM_BYTES_PER_ROW;
+        }
         Ok(())
     }
 }
