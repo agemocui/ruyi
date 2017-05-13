@@ -30,8 +30,8 @@ impl From<usize> for TimerTaskId {
 
 impl From<TimerTaskId> for usize {
     #[inline]
-    fn from(timer_id: TimerTaskId) -> Self {
-        timer_id.index
+    fn from(timer_task_id: TimerTaskId) -> Self {
+        timer_task_id.index
     }
 }
 

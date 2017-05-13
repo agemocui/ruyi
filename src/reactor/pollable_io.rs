@@ -55,8 +55,6 @@ impl<P: Pollable + fmt::Debug> Drop for PollableIo<P> {
     fn drop(&mut self) {
         if let Some(sched_idx) = self.sched_idx.take() {
             super::deregister_io(&self.io, sched_idx);
-            //self.interested_ops = Ops::empty();
-            //self.sched_idx = Slab::invalid_index()
         }
     }
 }
