@@ -18,7 +18,7 @@ struct Inner<T> {
     alloc_cap: usize,
     cap: usize,
     idx_mask: usize,
-    _padding0: [usize; cache_line_pad!(4)], // FIXME: use mem::size_of::<Vec<usize>>() + 1
+    _padding0: [usize; cache_line_pad!(4)],
 
     front: AtomicUsize,
     shadow_rear: Cell<usize>,

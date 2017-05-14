@@ -160,6 +160,7 @@ impl Inner {
         unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), self.len()) }
     }
 
+    #[inline]
     fn split_off(&mut self, at: usize) -> Self {
         let off = self.read_pos() + at;
 
