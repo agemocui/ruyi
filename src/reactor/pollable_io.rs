@@ -41,11 +41,11 @@ impl<P: Pollable + fmt::Debug> PollableIo<P> {
         if let Some(sched_idx) = self.sched_idx {
             if self.interested_ops != ops {
                 let sched_io_ops = ops - self.interested_ops;
-                super::reregister_io(&self.io, ops, sched_idx, sched_io_ops)?;
+                super::reregister_io::<P, _>(&self.io, ops, sched_idx, sched_io_ops)?;
                 self.interested_ops = ops;
             }
         } else {
-            self.sched_idx = Some(super::register_io(&self.io, ops)?);
+            self.sched_idx = Some(super::register_io::<P, _>(&self.io, ops)?);
         }
         Ok(())
     }
@@ -54,7 +54,8 @@ impl<P: Pollable + fmt::Debug> PollableIo<P> {
 impl<P: Pollable + fmt::Debug> Drop for PollableIo<P> {
     fn drop(&mut self) {
         if let Some(sched_idx) = self.sched_idx.take() {
-            super::deregister_io(&self.io, sched_idx);
+            super::deregister_io::<P, _>(&self.io, sched_idx)
+                .unwrap_or_else(|e| error!("Failed to deregister {:?}: {}", self.io, e));
         }
     }
 }

@@ -1,7 +1,6 @@
 use std::fmt;
 use std::io;
 use std::ops;
-use std::sync::Arc;
 use std::time::Duration;
 
 use super::sys;
@@ -163,40 +162,6 @@ pub trait Pollable {
     fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()>;
 
     fn deregister(&self, poller: &Poller) -> io::Result<()>;
-}
-
-impl<T: Pollable> Pollable for Arc<T> {
-    #[inline]
-    fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        Pollable::register(&**self, poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        Pollable::reregister(&**self, poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        Pollable::deregister(&**self, poller)
-    }
-}
-
-impl<'a, T: Pollable> Pollable for &'a T {
-    #[inline]
-    fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        Pollable::register(*self, poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        Pollable::reregister(*self, poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        Pollable::deregister(*self, poller)
-    }
 }
 
 #[repr(C)]

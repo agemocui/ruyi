@@ -2,11 +2,10 @@ use std::fmt;
 use std::io;
 use std::mem;
 use std::net::{self, SocketAddr};
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::{RawFd, AsRawFd, FromRawFd};
 
 use libc;
 
-use super::Selector;
 use super::{io_result, readv, writev, IoVec};
 
 pub struct TcpStream {
@@ -20,28 +19,14 @@ impl From<net::TcpStream> for TcpStream {
     }
 }
 
+impl AsRawFd for TcpStream {
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
 impl TcpStream {
-    #[inline]
-    pub fn register<I, T>(&self, selector: &Selector, interest: I, token: T) -> io::Result<()>
-        where I: Into<usize>,
-              T: Into<usize>
-    {
-        selector.register(self.inner.as_raw_fd(), interest, token)
-    }
-
-    #[inline]
-    pub fn reregister<I, T>(&self, selector: &Selector, interest: I, token: T) -> io::Result<()>
-        where I: Into<usize>,
-              T: Into<usize>
-    {
-        selector.reregister(self.inner.as_raw_fd(), interest, token)
-    }
-
-    #[inline]
-    pub fn deregister(&self, selector: &Selector) -> io::Result<()> {
-        selector.deregister(self.inner.as_raw_fd())
-    }
-
     #[inline]
     pub fn as_inner(&self) -> &net::TcpStream {
         &self.inner
@@ -80,28 +65,14 @@ impl From<net::TcpListener> for TcpListener {
     }
 }
 
+impl AsRawFd for TcpListener {
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
 impl TcpListener {
-    #[inline]
-    pub fn register<I, T>(&self, selector: &Selector, interest: I, token: T) -> io::Result<()>
-        where I: Into<usize>,
-              T: Into<usize>
-    {
-        selector.register(self.inner.as_raw_fd(), interest, token)
-    }
-
-    #[inline]
-    pub fn reregister<I, T>(&self, selector: &Selector, interest: I, token: T) -> io::Result<()>
-        where I: Into<usize>,
-              T: Into<usize>
-    {
-        selector.reregister(self.inner.as_raw_fd(), interest, token)
-    }
-
-    #[inline]
-    pub fn deregister(&self, selector: &Selector) -> io::Result<()> {
-        selector.deregister(self.inner.as_raw_fd())
-    }
-
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.inner.local_addr()

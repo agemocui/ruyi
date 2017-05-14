@@ -1,5 +1,5 @@
 use std::io;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 use std::time::Duration;
 use std::ptr;
 
@@ -140,30 +140,12 @@ impl Awakener {
             Ok(())
         }
     }
+}
 
+impl AsRawFd for Awakener {
     #[inline]
-    pub fn register<O, T>(&self, selector: &Selector, interested_ops: O, token: T) -> io::Result<()>
-        where O: Into<usize>,
-              T: Into<usize>
-    {
-        selector.register(self.event_fd, interested_ops, token)
-    }
-
-    #[inline]
-    pub fn reregister<O, T>(&self,
-                            selector: &Selector,
-                            interested_ops: O,
-                            token: T)
-                            -> io::Result<()>
-        where O: Into<usize>,
-              T: Into<usize>
-    {
-        selector.reregister(self.event_fd, interested_ops, token)
-    }
-
-    #[inline]
-    pub fn deregister(&self, selector: &Selector) -> io::Result<()> {
-        selector.deregister(self.event_fd)
+    fn as_raw_fd(&self) -> RawFd {
+        self.event_fd
     }
 }
 

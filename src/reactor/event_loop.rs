@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::cmp;
 use std::collections::binary_heap::BinaryHeap;
@@ -551,12 +552,15 @@ impl Inner {
     }
 
     #[inline]
-    fn register_io<P>(&mut self, pollable: P, interested_ops: Ops) -> io::Result<usize>
-        where P: Pollable
+    fn register_io<P, B>(&mut self, pollable: B, interested_ops: Ops) -> io::Result<usize>
+        where P: Pollable,
+              B: Borrow<P>
     {
         let sched_idx = self.sched_ios
             .insert(SchedIo::new(self.current_task, self.current_task));
-        match pollable.register(&self.poller, interested_ops, Token::from(sched_idx)) {
+        match pollable
+                  .borrow()
+                  .register(&self.poller, interested_ops, Token::from(sched_idx)) {
             Ok(()) => Ok(sched_idx),
             Err(e) => {
                 self.sched_ios.remove(sched_idx);
@@ -566,13 +570,14 @@ impl Inner {
     }
 
     #[inline]
-    fn reregister_io<P>(&mut self,
-                        pollable: P,
-                        interested_ops: Ops,
-                        sched_idx: usize,
-                        sched_io_ops: Ops)
-                        -> io::Result<()>
-        where P: Pollable
+    fn reregister_io<P, B>(&mut self,
+                           pollable: B,
+                           interested_ops: Ops,
+                           sched_idx: usize,
+                           sched_io_ops: Ops)
+                           -> io::Result<()>
+        where P: Pollable,
+              B: Borrow<P>
     {
         let sched_io = unsafe { self.sched_ios.get_unchecked_mut(sched_idx) };
         if sched_io_ops.contains_read() {
@@ -581,14 +586,17 @@ impl Inner {
         if sched_io_ops.contains_write() {
             sched_io.set_task_w(self.current_task);
         }
-        pollable.reregister(&self.poller, interested_ops, Token::from(sched_idx))
+        pollable
+            .borrow()
+            .reregister(&self.poller, interested_ops, Token::from(sched_idx))
     }
 
     #[inline]
-    fn deregister_io<P>(&mut self, pollable: P, sched_idx: usize) -> io::Result<()>
-        where P: Pollable
+    fn deregister_io<P, B>(&mut self, pollable: B, sched_idx: usize) -> io::Result<()>
+        where P: Pollable,
+              B: Borrow<P>
     {
-        match pollable.deregister(&self.poller) {
+        match pollable.borrow().deregister(&self.poller) {
             Ok(()) => {
                 self.sched_ios.remove(sched_idx);
                 Ok(())
@@ -676,28 +684,31 @@ impl EventLoop {
     }
 
     #[inline]
-    pub fn register_io<P>(&self, pollable: P, interested_ops: Ops) -> io::Result<usize>
-        where P: Pollable
+    pub fn register_io<P, B>(&self, pollable: B, interested_ops: Ops) -> io::Result<usize>
+        where P: Pollable,
+              B: Borrow<P>
     {
         self.as_mut_inner().register_io(pollable, interested_ops)
     }
 
     #[inline]
-    pub fn reregister_io<P>(&self,
-                            pollable: P,
-                            interested_ops: Ops,
-                            sched_idx: usize,
-                            sched_io_ops: Ops)
-                            -> io::Result<()>
-        where P: Pollable
+    pub fn reregister_io<P, B>(&self,
+                               pollable: B,
+                               interested_ops: Ops,
+                               sched_idx: usize,
+                               sched_io_ops: Ops)
+                               -> io::Result<()>
+        where P: Pollable,
+              B: Borrow<P>
     {
         self.as_mut_inner()
             .reregister_io(pollable, interested_ops, sched_idx, sched_io_ops)
     }
 
     #[inline]
-    pub fn deregister_io<P>(&self, pollable: P, sched_idx: usize) -> io::Result<()>
-        where P: Pollable
+    pub fn deregister_io<P, B>(&self, pollable: B, sched_idx: usize) -> io::Result<()>
+        where P: Pollable,
+              B: Borrow<P>
     {
         self.as_mut_inner().deregister_io(pollable, sched_idx)
     }

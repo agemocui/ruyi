@@ -1,7 +1,7 @@
 mod sys;
 
 mod poll;
-pub use self::poll::*;
+pub use self::poll::{Ops, Token, Event, Pollable, Poller};
 
 mod awakener;
 pub use self::awakener::*;

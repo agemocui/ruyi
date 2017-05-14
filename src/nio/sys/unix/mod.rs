@@ -1,6 +1,6 @@
 use std::io;
 use std::mem;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 
 use libc;
 
@@ -96,3 +96,24 @@ pub use self::bsd::*;
 mod tcp;
 
 pub use self::tcp::*;
+
+use super::super::poll::selector;
+use super::super::{Pollable, Poller};
+use super::super::{Ops, Token};
+
+impl<F: AsRawFd> Pollable for F {
+    #[inline]
+    fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
+        selector(poller).register(self.as_raw_fd(), interested_ops, token)
+    }
+
+    #[inline]
+    fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
+        selector(poller).reregister(self.as_raw_fd(), interested_ops, token)
+    }
+
+    #[inline]
+    fn deregister(&self, poller: &Poller) -> io::Result<()> {
+        selector(poller).deregister(self.as_raw_fd())
+    }
+}

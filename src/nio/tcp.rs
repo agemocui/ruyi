@@ -5,7 +5,7 @@ use std::net::{self, IpAddr, SocketAddr, Shutdown};
 use net2::TcpBuilder;
 
 use super::{sys, IoVec, ReadV, WriteV};
-use super::poll::{self, Ops, Token, Pollable, Poller};
+use super::poll::{Ops, Token, Pollable, Poller};
 use super::super::other_io_err;
 
 pub struct TcpStream {
@@ -65,19 +65,17 @@ impl TcpListener {
 impl Pollable for TcpListener {
     #[inline]
     fn register(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .register(poll::selector(poller), interest, token)
+        self.inner.register(poller, interest, token)
     }
 
     #[inline]
     fn reregister(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .reregister(poll::selector(poller), interest, token)
+        self.inner.reregister(poller, interest, token)
     }
 
     #[inline]
     fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        self.inner.deregister(poll::selector(poller))
+        self.inner.deregister(poller)
     }
 }
 
@@ -212,19 +210,17 @@ impl From<sys::TcpStream> for TcpStream {
 impl Pollable for TcpStream {
     #[inline]
     fn register(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .register(poll::selector(poller), interest, token)
+        self.inner.register(poller, interest, token)
     }
 
     #[inline]
     fn reregister(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .reregister(poll::selector(poller), interest, token)
+        self.inner.reregister(poller, interest, token)
     }
 
     #[inline]
     fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        self.inner.deregister(poll::selector(poller))
+        self.inner.deregister(poller)
     }
 }
 

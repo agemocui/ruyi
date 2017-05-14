@@ -3,7 +3,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::sys;
-use super::poll::{self, Ops, Token, Pollable, Poller};
+use super::poll::{Ops, Token, Pollable, Poller};
 
 pub struct Awakener {
     inner: sys::Awakener,
@@ -61,19 +61,17 @@ impl Awakener {
 impl Pollable for Awakener {
     #[inline]
     fn register(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .register(poll::selector(poller), interest, token)
+        self.inner.register(poller, interest, token)
     }
 
     #[inline]
     fn reregister(&self, poller: &Poller, interest: Ops, token: Token) -> io::Result<()> {
-        self.inner
-            .reregister(poll::selector(poller), interest, token)
+        self.inner.reregister(poller, interest, token)
     }
 
     #[inline]
     fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        self.inner.deregister(poll::selector(poller))
+        self.inner.deregister(poller)
     }
 }
 

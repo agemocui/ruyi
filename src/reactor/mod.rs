@@ -10,6 +10,7 @@ pub use self::timer::{Timer, PeriodicTimer};
 mod wheel;
 pub use self::wheel::{Sleep, Timeout};
 
+use std::borrow::Borrow;
 use std::fmt;
 use std::io;
 use std::marker::PhantomData;
@@ -115,19 +116,21 @@ fn schedule(at: Instant, period: Duration) -> TimerTaskId {
 }
 
 #[inline]
-fn register_io<P>(pollable: P, interested_ops: Ops) -> io::Result<usize>
-    where P: Pollable + Copy
+fn register_io<P, B>(pollable: B, interested_ops: Ops) -> io::Result<usize>
+    where P: Pollable,
+          B: Borrow<P>
 {
     CURRENT_LOOP.with(|eloop| eloop.register_io(pollable, interested_ops))
 }
 
 #[inline]
-fn reregister_io<P>(pollable: P,
-                    interested_ops: Ops,
-                    sched_idx: usize,
-                    sched_io_ops: Ops)
-                    -> io::Result<()>
-    where P: Pollable + Copy
+fn reregister_io<P, B>(pollable: B,
+                       interested_ops: Ops,
+                       sched_idx: usize,
+                       sched_io_ops: Ops)
+                       -> io::Result<()>
+    where P: Pollable,
+          B: Borrow<P>
 {
     CURRENT_LOOP.with(|eloop| {
                           eloop.reregister_io(pollable, interested_ops, sched_idx, sched_io_ops)
@@ -135,14 +138,11 @@ fn reregister_io<P>(pollable: P,
 }
 
 #[inline]
-fn deregister_io<P>(pollable: P, sched_idx: usize)
-    where P: Pollable + Copy + fmt::Debug
+fn deregister_io<P, B>(pollable: B, sched_idx: usize) -> io::Result<()>
+    where P: Pollable,
+          B: Borrow<P>
 {
-    CURRENT_LOOP.with(|eloop| {
-        eloop
-            .deregister_io(pollable, sched_idx)
-            .unwrap_or_else(|e| error!("{} failed to deregister {:?}: {}", eloop, pollable, e))
-    });
+    CURRENT_LOOP.with(|eloop| eloop.deregister_io(pollable, sched_idx))
 }
 
 #[inline]
