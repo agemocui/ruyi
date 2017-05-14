@@ -255,3 +255,28 @@ fn codec_str_utf8() {
 
     assert_eq!(str1, buf.read(str::utf8::read).unwrap());
 }
+
+#[test]
+fn compare() {
+    let mut b1 = ByteBuf::with_capacity(1);
+    let mut b2 = ByteBuf::with_capacity(1);
+    let mut b3 = ByteBuf::with_capacity(1);
+    let mut b4 = ByteBuf::with_capacity(33);
+
+    b1.append(&[9u8; 99] as &[u8], u8s::append).unwrap();
+    b2.append(&[9u8; 100] as &[u8], u8s::append).unwrap();
+    b3.append(&[9u8; 101] as &[u8], u8s::append).unwrap();
+    b4.append(&[9u8; 100] as &[u8], u8s::append).unwrap();
+
+    assert_eq!(b1 < b2, true);
+    assert_eq!(b2 < b3, true);
+    assert_eq!(b1 < b3, true);
+    assert_eq!(b2, b4);
+
+    b2.append(1, u8::append).unwrap();
+    b4.append(3, u8::append).unwrap();
+    assert_eq!(b2 < b4, true);
+
+    b3.prepend(7, u8::prepend).unwrap();
+    assert_eq!(b3 < b1, true);
+}

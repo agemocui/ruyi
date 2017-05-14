@@ -1,12 +1,14 @@
 pub mod codec;
 
+use std::cmp::Ordering;
 use std::fmt;
 use std::mem;
 use std::io::{Result, Read, Write, Error, ErrorKind};
+use std::iter::Iterator;
 use std::option::Option;
 use std::ptr;
 use std::rc::Rc;
-use std::slice;
+use std::slice::{self, Iter};
 use std::str;
 
 use super::nio::{IoVec, ReadV, WriteV};
@@ -153,6 +155,11 @@ impl Inner {
         self.read_pos()
     }
 
+    #[inline]
+    fn as_slice(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), self.len()) }
+    }
+
     fn split_off(&mut self, at: usize) -> Self {
         let off = self.read_pos() + at;
 
@@ -294,7 +301,7 @@ impl<'a> GetBlock<'a> {
 }
 
 pub struct GetIter<'a> {
-    blocks: &'a Vec<Inner>,
+    blocks: &'a [Inner],
     pos_idx: usize,
     // offset of the first u8 in the first block
     init_index: usize,
@@ -376,7 +383,7 @@ impl<'a> SetBlock<'a> {
 }
 
 pub struct SetIter<'a> {
-    blocks: &'a mut Vec<Inner>,
+    blocks: &'a mut [Inner],
     pos_idx: usize,
     // offset of the first u8 in the first block
     init_index: usize,
@@ -813,6 +820,11 @@ impl ByteBuf {
     }
 
     #[inline]
+    pub fn bytes(&self) -> Bytes {
+        Bytes::new(self)
+    }
+
+    #[inline]
     fn pos_idx(&self) -> usize {
         self.pos_idx
     }
@@ -840,8 +852,8 @@ impl ByteBuf {
     #[inline]
     fn get_iter(&self, pos_idx: usize, index: usize) -> GetIter {
         GetIter {
-            blocks: &self.blocks,
-            pos_idx: pos_idx,
+            blocks: &self.blocks[pos_idx..],
+            pos_idx: 0,
             init_index: index,
         }
     }
@@ -849,8 +861,8 @@ impl ByteBuf {
     #[inline]
     fn set_iter(&mut self, pos_idx: usize, index: usize) -> SetIter {
         SetIter {
-            blocks: &mut self.blocks,
-            pos_idx: pos_idx,
+            blocks: &mut self.blocks[pos_idx..],
+            pos_idx: 0,
             init_index: index,
         }
     }
@@ -910,6 +922,125 @@ impl ByteBuf {
             min_capacity
         };
         self.blocks.insert(0, Inner::for_prependable(cap));
+    }
+}
+
+impl Ord for ByteBuf {
+    fn cmp(&self, other: &Self) -> Ordering {
+        const EMPTY: &[u8] = &[0; 0];
+
+        let mut none1 = false;
+        let mut none2 = false;
+        let mut iter = self.blocks.iter();
+        let mut other_iter = other.blocks.iter();
+        let mut slice = EMPTY;
+        let mut other_slice = EMPTY;
+        loop {
+            if slice.len() < other_slice.len() {
+                let (s1, s2) = other_slice.split_at(slice.len());
+                let ord = slice.cmp(s1);
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+                slice = match iter.next() {
+                    Some(block) => block.as_slice(),
+                    None => return Ordering::Less,
+                };
+                other_slice = s2;
+            } else if slice.len() > other_slice.len() {
+                let (s1, s2) = slice.split_at(other_slice.len());
+                let ord = s1.cmp(other_slice);
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+                other_slice = match other_iter.next() {
+                    Some(block) => block.as_slice(),
+                    None => return Ordering::Greater,
+                };
+                slice = s2;
+            } else {
+                let ord = slice.cmp(other_slice);
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+                if none1 && none2 {
+                    return Ordering::Equal;
+                }
+                slice = match iter.next() {
+                    Some(block) => block.as_slice(),
+                    None => {
+                        none1 = true;
+                        EMPTY
+                    }
+                };
+                other_slice = match other_iter.next() {
+                    Some(block) => block.as_slice(),
+                    None => {
+                        none2 = true;
+                        EMPTY
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl PartialOrd for ByteBuf {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for ByteBuf {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for ByteBuf {}
+
+pub struct Bytes<'a> {
+    iter_inner: Iter<'a, Inner>,
+    iter_u8: Option<Iter<'a, u8>>,
+}
+
+impl<'a> Bytes<'a> {
+    fn new(buf: &'a ByteBuf) -> Self {
+        let mut iter_inner = (&buf.blocks[buf.pos_idx..]).iter();
+        let iter_u8 = match iter_inner.next() {
+            Some(inner) => {
+                let ptr = inner.ptr_at(inner.read_pos());
+                Some(unsafe { slice::from_raw_parts(ptr, inner.len()) }.iter())
+            }
+            None => None,
+        };
+        Bytes {
+            iter_inner,
+            iter_u8,
+        }
+    }
+}
+
+impl<'a> Iterator for Bytes<'a> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.iter_u8.as_mut() {
+                Some(iter_u8) => {
+                    if let Some(b) = iter_u8.next() {
+                        return Some(*b);
+                    }
+                }
+                None => return None,
+            }
+            self.iter_u8 = match self.iter_inner.next() {
+                Some(inner) => Some(inner.as_slice().iter()),
+                None => None,
+            };
+        }
     }
 }
 
@@ -1009,59 +1140,39 @@ pub struct HexDump<'a> {
 
 impl<'a> fmt::Display for HexDump<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let blocks: &[Inner] = &self.inner.blocks[self.inner.pos_idx..];
-        let mut block: &Inner;
-        let mut len;
-        let mut n = 0;
-        loop {
-            if n >= blocks.len() {
-                return Ok(());
-            }
-            block = unsafe { blocks.get_unchecked(n) };
-            len = block.len();
-            n += 1;
-            if len > 0 {
-                break;
-            }
+        let mut bytes = self.inner.bytes();
+        let mut next = bytes.next();
+        if next.is_none() {
+            return Ok(());
         }
 
-        const HM_BYTES_PER_ROW: usize = 16;
+        const BYTES_PER_ROW: usize = 16;
 
         let mut addr = 0;
-        let mut ptr = block.ptr_at(block.read_pos());
-        let mut off = 0;
-        let mut asc: [u8; HM_BYTES_PER_ROW] = unsafe { mem::uninitialized() };
+        let mut asc: [u8; BYTES_PER_ROW] = unsafe { mem::uninitialized() };
         loop {
             write!(f, "{:08X}h:", addr)?;
             // dump one row
             let mut i = 0;
-            'eof: while i < HM_BYTES_PER_ROW {
-                let b = unsafe { *ptr.offset(off as isize) };
-                off += 1;
-                write!(f, " {:02X}", b)?;
-                asc[i] = if (b as char).is_control() { b'.' } else { b };
-                i += 1;
-                len -= 1;
-                while len < 1 {
-                    if n >= blocks.len() {
-                        for _ in i..HM_BYTES_PER_ROW {
+            while i < BYTES_PER_ROW {
+                match next {
+                    Some(b) => {
+                        write!(f, " {:02X}", b)?;
+                        asc[i] = if (b as char).is_control() { b'.' } else { b };
+                        i += 1;
+                        next = bytes.next();
+                    }
+                    None => {
+                        for _ in i..BYTES_PER_ROW {
                             write!(f, "   ")?;
                         }
-                        break 'eof;
+                        writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
+                        return Ok(());
                     }
-                    block = unsafe { blocks.get_unchecked(n) };
-                    len = block.len();
-                    ptr = block.ptr_at(block.read_pos());
-                    off = 0;
-                    n += 1;
                 }
             }
             writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
-            if len == 0 {
-                break;
-            }
-            addr += HM_BYTES_PER_ROW;
+            addr += BYTES_PER_ROW;
         }
-        Ok(())
     }
 }
