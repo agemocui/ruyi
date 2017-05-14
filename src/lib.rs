@@ -19,6 +19,12 @@ macro_rules! word_len {
 
 macro_rules! cache_line_pad { ($N:expr) => { 64 / word_len!() - 1 - $N }}
 
+#[inline]
+fn unreachable() -> ! {
+    extern crate unreachable;
+    unsafe { unreachable::unreachable() }
+}
+
 use std::fmt::Display;
 use std::io;
 

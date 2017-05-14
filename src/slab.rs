@@ -4,6 +4,8 @@ use std::mem;
 use std::ops::{Index, IndexMut};
 use std::usize::MAX;
 
+use super::unreachable;
+
 const INVALID_INDEX: usize = MAX;
 
 #[inline]
@@ -31,7 +33,7 @@ impl<T> Object<T> {
     unsafe fn unchecked_unwrap(&self) -> &T {
         match *self {
             Object::Used(ref elem) => elem,
-            Object::Free(_) => unreachable!(),
+            Object::Free(_) => unreachable(),
         }
     }
 
@@ -39,7 +41,7 @@ impl<T> Object<T> {
     unsafe fn unchecked_unwrap_mut(&mut self) -> &mut T {
         match *self {
             Object::Used(ref mut elem) => elem,
-            Object::Free(_) => unreachable!(),
+            Object::Free(_) => unreachable(),
         }
     }
 
@@ -47,7 +49,7 @@ impl<T> Object<T> {
     unsafe fn unchecked_next_free(&self) -> usize {
         match *self {
             Object::Free(idx) => idx,
-            Object::Used(_) => unreachable!(),
+            Object::Used(_) => unreachable(),
         }
     }
 }

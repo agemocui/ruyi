@@ -13,7 +13,7 @@ use super::Task;
 use super::wheel::{TimerId, Wheel};
 use super::super::slab::{self, Slab};
 use super::super::nio::{Event, Poller, Pollable, Ops, Token};
-
+use super::super::unreachable;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimerTaskId {
@@ -501,7 +501,7 @@ impl Inner {
                 return self.run_task(timer_task.task());
             }
             TimerTaskState::Cancelled => self.timer_queue.remove(exp.timer_task_id()),
-            TimerTaskState::Expired => unreachable!(),
+            TimerTaskState::Expired => unreachable(),
         }
         false
     }
@@ -621,7 +621,7 @@ impl Inner {
         }
         match self.wheel.as_mut() {
             Some(wheel) => wheel.schedule(dur, self.current_task),
-            _ => unreachable!(),
+            _ => unreachable(),
         }
     }
 
@@ -629,7 +629,7 @@ impl Inner {
     fn wt_cancel(&mut self, timer_id: TimerId) {
         match self.wheel.as_mut() {
             Some(wheel) => wheel.cancel(timer_id),
-            None => unreachable!(),
+            None => unreachable(),
         }
     }
 
@@ -637,7 +637,7 @@ impl Inner {
     fn wt_is_expired(&self, timer_id: TimerId) -> bool {
         match self.wheel.as_ref() {
             Some(wheel) => wheel.is_expired(timer_id),
-            None => unreachable!(),
+            None => unreachable(),
         }
     }
 }

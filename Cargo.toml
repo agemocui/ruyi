@@ -21,6 +21,7 @@ travis-ci = { repository = "agemocui/ruyi" }
 futures = "0.1"
 log = "0.3"
 net2 = "0.2"
+unreachable = "1.0"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"
