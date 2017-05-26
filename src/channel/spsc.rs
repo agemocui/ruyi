@@ -11,7 +11,7 @@ use futures::{Poll, Async};
 
 use super::err::{SendError, TrySendError, RecvError, TryRecvError};
 use super::super::nio::{Awakener, Pollable, Poller, Ops, Token};
-use super::super::reactor::{self, IntoStream, PollableIo};
+use super::super::reactor::{IntoStream, PollableIo};
 
 struct Inner<T> {
     buf_ptr: *mut T,
@@ -121,7 +121,7 @@ impl Drop for SenderAwakener {
     fn drop(&mut self) {
         if let Err(e) = (&self.0).wakeup() {
             if e.kind() != io::ErrorKind::WouldBlock {
-                error!("Failed to wakeup, {}: {}", &self.0, e);
+                error!("Failed to wakeup, {:?}: {}", &self.0, e);
             }
         }
     }
@@ -166,7 +166,7 @@ impl Drop for ReceiverAwakener {
     fn drop(&mut self) {
         if let Err(e) = (&self.0).reset() {
             if e.kind() != io::ErrorKind::WouldBlock {
-                error!("Failed to reset, {}: {}", &self.0, e);
+                error!("Failed to reset, {:?}: {}", &self.0, e);
             }
         }
     }
@@ -240,7 +240,7 @@ impl<T> IntoStream for Receiver<T> {
     #[inline]
     fn into_stream(self) -> Self::Stream {
         Receiving {
-            io: reactor::register(self),
+            io: PollableIo::new(self),
             need_reset: true,
         }
     }
@@ -249,7 +249,7 @@ impl<T> IntoStream for Receiver<T> {
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-               "Receiver {{ inner: {:?}, awakener: {} }}",
+               "Receiver {{ inner: {:?}, awakener: {:?} }}",
                &self.inner,
                &self.awakener.0)
     }
@@ -263,7 +263,7 @@ impl<T> Stream for Receiving<T> {
         if self.need_reset {
             if let Err(e) = self.io.get_ref().reset() {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    self.io.interest_ops(Ops::read())?;
+                    self.io.need_read()?;
                     return Ok(Async::NotReady);
                 }
                 return Err(e);
@@ -277,7 +277,7 @@ impl<T> Stream for Receiving<T> {
             Ok(Async::Ready(None))
         } else {
             self.need_reset = true;
-            self.io.interest_ops(Ops::read())?;
+            self.io.need_read()?;
             Ok(Async::NotReady)
         }
     }

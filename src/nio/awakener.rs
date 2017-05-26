@@ -75,7 +75,7 @@ impl Pollable for Awakener {
     }
 }
 
-impl fmt::Display for Awakener {
+impl fmt::Debug for Awakener {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
                "Awakener {{ inner: {:?}, need_wakeup: {:?} }}",

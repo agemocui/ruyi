@@ -5,6 +5,7 @@ extern crate log;
 extern crate libc;
 
 extern crate net2;
+
 extern crate futures;
 
 #[cfg(target_pointer_width = "32")]
@@ -30,16 +31,17 @@ fn unreachable() -> ! {
 }
 
 use std::fmt::Display;
-use std::io;
+use std::io::{Error, ErrorKind};
 
 #[inline]
-fn other_io_err<E: Display>(e: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e.to_string())
+fn other_io_err<E: Display>(e: E) -> Error {
+    Error::new(ErrorKind::Other, e.to_string())
 }
 
 pub mod slab;
 pub mod buf;
 pub mod nio;
+pub mod io;
 pub mod reactor;
 pub mod channel;
 pub mod net;

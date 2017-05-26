@@ -11,7 +11,6 @@ mod wheel;
 pub use self::wheel::{Sleep, Timeout};
 
 use std::borrow::Borrow;
-use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::time::{Instant, Duration};
@@ -30,13 +29,6 @@ pub trait IntoSink {
     type Sink: Sink;
 
     fn into_sink(self) -> Self::Sink;
-}
-
-pub trait Split {
-    type Stream: Stream;
-    type Sink: Sink;
-
-    fn split(self) -> (Self::Stream, Self::Sink);
 }
 
 pub type Task = Box<Future<Item = (), Error = ()>>;
@@ -94,13 +86,6 @@ pub fn spawn(f: Task) {
 }
 
 #[inline]
-pub fn register<P>(io: P) -> PollableIo<P>
-    where P: Pollable + fmt::Debug
-{
-    pollable_io::new(io)
-}
-
-#[inline]
 pub fn sleep(dur: Duration) -> Sleep {
     wheel::sleep(dur)
 }
@@ -143,6 +128,16 @@ fn deregister_io<P, B>(pollable: B, sched_idx: usize) -> io::Result<()>
           B: Borrow<P>
 {
     CURRENT_LOOP.with(|eloop| eloop.deregister_io(pollable, sched_idx))
+}
+
+#[inline]
+fn is_readable(sched_idx: usize) -> bool {
+    CURRENT_LOOP.with(|eloop| eloop.is_readable(sched_idx))
+}
+
+#[inline]
+fn is_writable(sched_idx: usize) -> bool {
+    CURRENT_LOOP.with(|eloop| eloop.is_writable(sched_idx))
 }
 
 #[inline]

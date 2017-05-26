@@ -1,27 +1,24 @@
 use std::io;
-use std::fmt;
 
 use super::super::nio::{Pollable, Ops};
 
 #[derive(Debug)]
-pub struct PollableIo<P: Pollable + fmt::Debug> {
+pub struct PollableIo<P: Pollable> {
     io: P,
     interested_ops: Ops,
     sched_idx: Option<usize>,
 }
 
-#[inline]
-pub fn new<P>(io: P) -> PollableIo<P>
-    where P: Pollable + fmt::Debug
-{
-    PollableIo {
-        io,
-        interested_ops: Ops::empty(),
-        sched_idx: None,
+impl<P: Pollable> PollableIo<P> {
+    #[inline]
+    pub fn new(io: P) -> Self {
+        PollableIo {
+            io,
+            interested_ops: Ops::empty(),
+            sched_idx: None,
+        }
     }
-}
 
-impl<P: Pollable + fmt::Debug> PollableIo<P> {
     #[inline]
     pub fn get_ref(&self) -> &P {
         &self.io
@@ -33,11 +30,59 @@ impl<P: Pollable + fmt::Debug> PollableIo<P> {
     }
 
     #[inline]
-    pub fn interested_ops(&self) -> Ops {
+    pub fn need_read(&mut self) -> io::Result<()> {
+        let ops = self.interested_ops() | Ops::read();
+        self.interest_ops(ops)
+    }
+
+    #[inline]
+    pub fn need_write(&mut self) -> io::Result<()> {
+        let ops = self.interested_ops() | Ops::write();
+        self.interest_ops(ops)
+    }
+
+    #[inline]
+    pub fn no_need_read(&mut self) -> io::Result<()> {
+        let ops = self.interested_ops() - Ops::read();
+        self.interest_ops(ops)
+    }
+
+    #[inline]
+    pub fn no_need_write(&mut self) -> io::Result<()> {
+        let ops = self.interested_ops() - Ops::write();
+        self.interest_ops(ops)
+    }
+
+    pub fn is_readable(&self) -> bool {
+        match self.interested_ops().contains_read() {
+            true => {
+                match self.sched_idx {
+                    Some(idx) => super::is_readable(idx),
+                    None => true,
+                }
+            }
+            false => true,
+        }
+    }
+
+    pub fn is_writable(&self) -> bool {
+        match self.interested_ops().contains_write() {
+            true => {
+                match self.sched_idx {
+                    Some(idx) => super::is_writable(idx),
+                    None => true,
+                }
+            }
+            false => true,
+        }
+    }
+
+    #[inline]
+    fn interested_ops(&self) -> Ops {
         self.interested_ops
     }
 
-    pub fn interest_ops(&mut self, ops: Ops) -> io::Result<()> {
+    fn interest_ops(&mut self, ops: Ops) -> io::Result<()> {
         if let Some(sched_idx) = self.sched_idx {
             if self.interested_ops != ops {
                 let sched_io_ops = ops - self.interested_ops;
@@ -51,7 +96,7 @@ impl<P: Pollable + fmt::Debug> PollableIo<P> {
     }
 }
 
-impl<P: Pollable + fmt::Debug> Drop for PollableIo<P> {
+impl<P: Pollable> Drop for PollableIo<P> {
     fn drop(&mut self) {
         if let Some(sched_idx) = self.sched_idx.take() {
             super::deregister_io::<P, _>(&self.io, sched_idx)

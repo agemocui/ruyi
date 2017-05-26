@@ -142,7 +142,7 @@ impl Inner {
 
     #[inline]
     fn len(&self) -> usize {
-        self.write_pos - self.read_pos
+        self.write_pos() - self.read_pos()
     }
 
     #[inline]
@@ -653,8 +653,8 @@ impl ByteBuf {
         let mut dst_ptr;
         {
             let block = unsafe { self.blocks.get_unchecked_mut(pos_idx) };
-            if at < block.len() {
-                let other_block = block.split_off(at);
+            let other_block = block.split_off(at);
+            if !other_block.is_empty() || other_block.appendable() >= 8 {
                 other_len = n + 1;
                 other_blocks.reserve(other_len);
                 dst_ptr = other_blocks.as_mut_ptr();
@@ -758,8 +758,8 @@ impl ByteBuf {
             let size2 = last_2nd.appendable();
             if size2 > 0 {
                 let off2 = last_2nd.write_pos();
-                let iovs = [IoVec::from_mut(&mut unsafe { *last_2nd.mut_ptr_at(off2) }, size2),
-                            IoVec::from_mut(&mut unsafe { *last.mut_ptr_at(off) }, size)];
+                let iovs = [IoVec::from_mut(unsafe { &mut *last_2nd.mut_ptr_at(off2) }, size2),
+                            IoVec::from_mut(unsafe { &mut *last.mut_ptr_at(off) }, size)];
                 let read = r.readv(&iovs)?;
                 if read <= size2 {
                     last_2nd.set_write_pos(off2 + read);
@@ -785,17 +785,21 @@ impl ByteBuf {
         let n = self.blocks.len() - self.pos_idx;
         if n == 1 {
             let block = unsafe { self.blocks.get_unchecked_mut(self.pos_idx) };
+            if block.len() < 1 {
+                return Ok(0);
+            }
             let off = block.read_pos();
-            let len = block.len();
-            let buf = unsafe { slice::from_raw_parts(block.ptr_at(off), len) };
+            let buf = unsafe { slice::from_raw_parts(block.ptr_at(off), block.len()) };
             let written = w.write(buf)?;
             block.set_read_pos(off + written);
             Ok(written)
         } else if n > 1 {
             let mut iovs = Vec::with_capacity(n);
             for block in &self.blocks[self.pos_idx..] {
-                let off = block.read_pos();
-                iovs.push(IoVec::from(&unsafe { *block.ptr_at(off) }, block.len()));
+                if block.len() > 0 {
+                    let off = block.read_pos();
+                    iovs.push(IoVec::from(unsafe { &*block.ptr_at(off) }, block.len()));
+                }
             }
             let written = w.writev(iovs.as_slice())?;
             self.skip(written);
@@ -885,11 +889,11 @@ impl ByteBuf {
             if i == blocks.len() {
                 return Err(Error::new(ErrorKind::UnexpectedEof, "Index out of bounds"));
             }
-            let block = unsafe { blocks.get_unchecked(i) };
-            if *index <= block.len() {
+            let block_len = unsafe { blocks.get_unchecked(i) }.len();
+            if *index <= block_len {
                 return Ok(i);
             }
-            *index -= block.len();
+            *index -= block_len;
             i += 1;
         }
     }

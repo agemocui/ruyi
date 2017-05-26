@@ -9,6 +9,7 @@ pub use self::awakener::*;
 use std::io;
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct IoVec {
     inner: sys::IoVec,
 }
@@ -46,6 +47,8 @@ impl<'a, W: WriteV> WriteV for &'a mut W {
         WriteV::writev(*self, iovs)
     }
 }
+
+pub trait PollRead: ReadV {}
 
 mod tcp;
 pub use self::tcp::*;

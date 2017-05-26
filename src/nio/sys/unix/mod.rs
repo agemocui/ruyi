@@ -59,6 +59,16 @@ impl IoVec {
     }
 }
 
+impl fmt::Debug for IoVec {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let base: usize = unsafe { mem::transmute(self.inner.iov_base) };
+        write!(f,
+               "{{ iov_base: 0x{:08x}, iov_len: {} }}",
+               base,
+               self.inner.iov_len as usize)
+    }
+}
+
 #[inline]
 fn readv(fd: RawFd, iov_ptr: *const IoVec, len: usize) -> io::Result<usize> {
     let res = unsafe { libc::readv(fd, iov_ptr as *const libc::iovec, len as libc::c_int) };
@@ -97,11 +107,12 @@ mod tcp;
 
 pub use self::tcp::*;
 
+use std::fmt;
 use super::super::poll::selector;
 use super::super::{Pollable, Poller};
 use super::super::{Ops, Token};
 
-impl<F: AsRawFd> Pollable for F {
+impl<F: AsRawFd + fmt::Debug> Pollable for F {
     #[inline]
     fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
         selector(poller).register(self.as_raw_fd(), interested_ops, token)

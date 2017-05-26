@@ -8,18 +8,19 @@ extern crate ruyi;
 
 use std::thread;
 
-use futures::{Future, Sink, Stream};
+use futures::{Future, Stream};
 use ruyi::channel::spsc;
-use ruyi::nio::{TcpListener, TcpStream};
-use ruyi::reactor::{self, IntoStream, IntoTask, Split};
+use ruyi::io;
+use ruyi::net::{TcpStream, TcpListener};
+use ruyi::reactor::{self, IntoStream, IntoTask};
 
 fn echo(sock: TcpStream) {
     // Disable Nagle's algorithm
     sock.set_nodelay(true).unwrap();
 
-    let (r, w) = sock.split();
+    let (r, w) = io::split(sock);
     // Send whatever received back to client concurrently
-    reactor::spawn(w.send_all(r).map_err(|e| error!("{}", e)).into_task());
+    reactor::spawn(io::copy(r, w).map_err(|e| error!("{}", e)).into_task());
 }
 
 fn main() {
@@ -47,7 +48,7 @@ fn main() {
         .port(10007)
         .build()
         .unwrap()
-        .into_stream()
+        .incoming()
         .for_each(|(sock, _)| {
                       // Dispatch sockets to IO workers in a round-robin manner
                       workers[i].try_send(sock).unwrap();

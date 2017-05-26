@@ -156,7 +156,7 @@ impl From<Token> for usize {
     }
 }
 
-pub trait Pollable {
+pub trait Pollable: fmt::Debug {
     fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()>;
 
     fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()>;

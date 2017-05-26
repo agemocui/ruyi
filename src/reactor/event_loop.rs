@@ -263,8 +263,10 @@ impl TimerQueue {
 
 #[derive(Clone, Copy)]
 struct SchedIo {
-    task_r: TaskId,
-    task_w: TaskId,
+    read_task: TaskId,
+    write_task: TaskId,
+    readable: bool,
+    writable: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -297,31 +299,53 @@ pub fn new() -> io::Result<EventLoop> {
 
 impl SchedIo {
     #[inline]
-    fn new(task_r: TaskId, task_w: TaskId) -> Self {
+    fn new(read_task: TaskId, write_task: TaskId, readable: bool, writable: bool) -> Self {
         SchedIo {
-            task_r: task_r,
-            task_w: task_w,
+            read_task,
+            write_task,
+            readable,
+            writable,
         }
     }
 
     #[inline]
-    fn task_r(&self) -> TaskId {
-        self.task_r
+    fn read_task(&self) -> TaskId {
+        self.read_task
     }
 
     #[inline]
-    fn set_task_r(&mut self, task_r: TaskId) {
-        self.task_r = task_r;
+    fn set_read_task(&mut self, read_task: TaskId) {
+        self.read_task = read_task;
     }
 
     #[inline]
-    fn task_w(&self) -> TaskId {
-        self.task_w
+    fn write_task(&self) -> TaskId {
+        self.write_task
     }
 
     #[inline]
-    fn set_task_w(&mut self, task_w: TaskId) {
-        self.task_w = task_w;
+    fn set_write_task(&mut self, write_task: TaskId) {
+        self.write_task = write_task;
+    }
+
+    #[inline]
+    fn is_readable(&self) -> bool {
+        self.readable
+    }
+
+    #[inline]
+    fn set_readable(&mut self, readable: bool) {
+        self.readable = readable;
+    }
+
+    #[inline]
+    fn is_writable(&self) -> bool {
+        self.writable
+    }
+
+    #[inline]
+    fn set_writable(&mut self, writable: bool) {
+        self.writable = writable;
     }
 }
 
@@ -427,16 +451,18 @@ impl Inner {
             }
 
             for event in &events {
-                let sched_io = unsafe { *self.sched_ios.get_unchecked(event.token().into()) };
-                if event.ready_ops().contains_read() {
-                    if self.run_task(sched_io.task_r()) {
-                        break;
-                    }
+                let token = event.token().into();
+                let (read_task, write_task) = {
+                    let sched_io = unsafe { self.sched_ios.get_unchecked_mut(token) };
+                    sched_io.set_readable(event.ready_ops().contains_read());
+                    sched_io.set_writable(event.ready_ops().contains_write());
+                    (sched_io.read_task(), sched_io.write_task())
+                };
+                if event.ready_ops().contains_read() && self.run_task(read_task) {
+                    break;
                 }
-                if event.ready_ops().contains_write() {
-                    if self.run_task(sched_io.task_w()) {
-                        break;
-                    }
+                if event.ready_ops().contains_write() && self.run_task(write_task) {
+                    break;
                 }
             }
         }
@@ -556,8 +582,11 @@ impl Inner {
         where P: Pollable,
               B: Borrow<P>
     {
-        let sched_idx = self.sched_ios
-            .insert(SchedIo::new(self.current_task, self.current_task));
+        let sched_io = SchedIo::new(self.current_task,
+                                    self.current_task,
+                                    !interested_ops.contains_read(),
+                                    !interested_ops.contains_write());
+        let sched_idx = self.sched_ios.insert(sched_io);
         match pollable
                   .borrow()
                   .register(&self.poller, interested_ops, Token::from(sched_idx)) {
@@ -581,10 +610,16 @@ impl Inner {
     {
         let sched_io = unsafe { self.sched_ios.get_unchecked_mut(sched_idx) };
         if sched_io_ops.contains_read() {
-            sched_io.set_task_r(self.current_task);
+            sched_io.set_read_task(self.current_task);
+            sched_io.set_readable(false);
+        } else {
+            sched_io.set_readable(true);
         }
         if sched_io_ops.contains_write() {
-            sched_io.set_task_w(self.current_task);
+            sched_io.set_write_task(self.current_task);
+            sched_io.set_writable(false);
+        } else {
+            sched_io.set_writable(true);
         }
         pollable
             .borrow()
@@ -597,12 +632,19 @@ impl Inner {
               B: Borrow<P>
     {
         match pollable.borrow().deregister(&self.poller) {
-            Ok(()) => {
-                self.sched_ios.remove(sched_idx);
-                Ok(())
-            }
+            Ok(()) => Ok(drop(self.sched_ios.remove(sched_idx))),
             Err(e) => Err(e),
         }
+    }
+
+    #[inline]
+    fn is_readable(&self, sched_idx: usize) -> bool {
+        unsafe { self.sched_ios.get_unchecked(sched_idx) }.is_readable()
+    }
+
+    #[inline]
+    fn is_writable(&self, sched_idx: usize) -> bool {
+        unsafe { self.sched_ios.get_unchecked(sched_idx) }.is_writable()
     }
 
     #[inline]
@@ -711,6 +753,16 @@ impl EventLoop {
               B: Borrow<P>
     {
         self.as_mut_inner().deregister_io(pollable, sched_idx)
+    }
+
+    #[inline]
+    pub fn is_readable(&self, sched_idx: usize) -> bool {
+        self.as_inner().is_readable(sched_idx)
+    }
+
+    #[inline]
+    pub fn is_writable(&self, sched_idx: usize) -> bool {
+        self.as_inner().is_writable(sched_idx)
     }
 
     #[inline]
