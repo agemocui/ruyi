@@ -27,7 +27,7 @@ Examples can be found in the `examples` folder in this repository.
 
 * `Share-nothing` - One loop per core model; Use SPSC queue to communicate between cores.
 * `Chained-buffer` - Reduces/avoids memory copy as much as possible.
-* `Timer` - 2 types: binary heap based and hashed timing-wheel based.
+* `Timer` - Heap based and hashed timing-wheel based.
 * `Graceful Shutdown` - Event loop will not end until all `Gate`s' lifetimes end.
 
 ## Platforms
