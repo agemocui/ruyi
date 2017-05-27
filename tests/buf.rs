@@ -12,10 +12,10 @@ fn read_write() {
     for i in 0..data1.capacity() {
         data1.push(i as u8);
     }
-    let mut buf = ByteBuf::with_capacity(1);
+    let mut buf = ByteBuf::with_growth(1);
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(0, buf.try_reserve_in_head(size));
 
     let n1 = buf.as_writer().write(&data1).unwrap();
     assert_eq!(n1, 100);
@@ -31,11 +31,11 @@ fn read_write() {
 
 #[test]
 fn codec_u32() {
-    let mut buf = ByteBuf::with_capacity(1);
+    let mut buf = ByteBuf::with_growth(1);
 
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(0, buf.try_reserve_in_head(size));
 
     let mut n = buf.append(0x12345678, u32::big_endian::append).unwrap();
     assert_eq!(n, 4);
@@ -165,10 +165,10 @@ fn codec_u8() {
 
 #[test]
 fn codec_u8s() {
-    let mut buf = ByteBuf::with_capacity(1);
+    let mut buf = ByteBuf::with_growth(1);
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(0, buf.try_reserve_in_head(size));
 
     let mut n = buf.append(u8s::filling(6, 20), u8s::append_fill)
         .unwrap();
@@ -190,10 +190,10 @@ fn codec_u8s() {
 
 #[test]
 fn codec_f64() {
-    let mut buf = ByteBuf::with_capacity(1);
+    let mut buf = ByteBuf::with_growth(1);
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(0, buf.try_reserve_in_head(size));
 
     const F_V1: f64 = ::std::f64::consts::PI;
     const F_V2: f64 = F_V1 * 123456.789f64;
@@ -236,10 +236,10 @@ fn codec_f64() {
 
 #[test]
 fn codec_str_utf8() {
-    let mut buf = ByteBuf::with_capacity(1);
+    let mut buf = ByteBuf::with_growth(1);
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(0, buf.try_reserve_in_head(size));
 
     let str1 = "bytebuf string codec test";
     assert_eq!(str1.len(), buf.append(str1, str::utf8::append).unwrap());
@@ -258,10 +258,10 @@ fn codec_str_utf8() {
 
 #[test]
 fn compare() {
-    let mut b1 = ByteBuf::with_capacity(1);
-    let mut b2 = ByteBuf::with_capacity(1);
-    let mut b3 = ByteBuf::with_capacity(1);
-    let mut b4 = ByteBuf::with_capacity(33);
+    let mut b1 = ByteBuf::with_growth(1);
+    let mut b2 = ByteBuf::with_growth(1);
+    let mut b3 = ByteBuf::with_growth(1);
+    let mut b4 = ByteBuf::with_growth(33);
 
     b1.append(&[9u8; 99] as &[u8], u8s::append).unwrap();
     b2.append(&[9u8; 100] as &[u8], u8s::append).unwrap();

@@ -18,9 +18,12 @@ impl RecvBuf {
 
     #[inline]
     fn append(v: usize, chain: &mut Appender) -> io::Result<usize> {
-        if chain.last_mut().appendable() < v {
-            chain.append(v);
+        if let Some(block) = chain.last_mut() {
+            if block.appendable() >= v {
+                return Ok(0);
+            }
         }
+        chain.append(v);
         Ok(0)
     }
 

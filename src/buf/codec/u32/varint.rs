@@ -60,8 +60,7 @@ pub fn set(mut v: u32, chain: &mut SetIter) -> io::Result<usize> {
 pub fn append(mut v: u32, chain: &mut Appender) -> io::Result<usize> {
     let mut n = 0usize;
     loop {
-        {
-            let mut block = chain.last_mut();
+        if let Some(mut block) = chain.last_mut() {
             let cap = block.capacity();
             let ptr_u8 = block.as_mut_ptr();
             for pos in block.write_pos()..cap {
@@ -89,8 +88,7 @@ pub fn prepend(v: u32, chain: &mut Prepender) -> io::Result<usize> {
     let mut n = 0usize;
     let mut flag = 0u32;
     loop {
-        {
-            let mut block = chain.first_mut();
+        if let Some(mut block) = chain.first_mut() {
             for pos in (0..block.read_pos()).rev() {
                 n += 1;
                 let b = (v >> shift | flag) as u8;

@@ -118,8 +118,7 @@ pub fn append(v: &[u8], chain: &mut Appender) -> io::Result<usize> {
     let mut ptr_src = v.as_ptr();
     let mut n = v.len();
     loop {
-        {
-            let mut block = chain.last_mut();
+        if let Some(mut block) = chain.last_mut() {
             let off = block.write_pos();
             let ptr_dst = unsafe { block.as_mut_ptr().offset(off as isize) };
             let appendable = block.appendable();
@@ -145,8 +144,7 @@ pub fn prepend(v: &[u8], chain: &mut Prepender) -> io::Result<usize> {
     let mut n = v.len();
     unsafe { ptr_src = ptr_src.offset(n as isize) };
     loop {
-        {
-            let mut block = chain.first_mut();
+        if let Some(mut block) = chain.first_mut() {
             let prependable = block.prependable();
             let mut ptr_dst = block.as_mut_ptr();
             if prependable >= n {
@@ -189,8 +187,7 @@ pub fn set_fill(filling: Filling, chain: &mut SetIter) -> io::Result<usize> {
 pub fn append_fill(filling: Filling, chain: &mut Appender) -> io::Result<usize> {
     let mut n = filling.count();
     loop {
-        {
-            let mut block = chain.last_mut();
+        if let Some(mut block) = chain.last_mut() {
             let off = block.write_pos();
             let ptr_dst = unsafe { block.as_mut_ptr().offset(off as isize) };
             let appendable = block.appendable();
@@ -211,8 +208,7 @@ pub fn append_fill(filling: Filling, chain: &mut Appender) -> io::Result<usize> 
 pub fn prepend_fill(filling: Filling, chain: &mut Prepender) -> io::Result<usize> {
     let mut n = filling.count();
     loop {
-        {
-            let mut block = chain.first_mut();
+        if let Some(mut block) = chain.first_mut() {
             let prependable = block.prependable();
             let mut ptr_dst = block.as_mut_ptr();
             if prependable >= n {

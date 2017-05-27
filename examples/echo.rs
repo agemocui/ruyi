@@ -56,6 +56,6 @@ fn main() {
                       Ok(())
                   });
 
-    // Run the event loop
+    // Run acceptor
     reactor::run(acceptor).unwrap();
 }

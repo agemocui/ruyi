@@ -32,8 +32,7 @@ pub fn set(v: u8, chain: &mut SetIter) -> io::Result<usize> {
 
 pub fn append(v: u8, chain: &mut Appender) -> io::Result<usize> {
     loop {
-        {
-            let mut block = chain.last_mut();
+        if let Some(mut block) = chain.last_mut() {
             if block.appendable() > 0 {
                 let off = block.write_pos();
                 unsafe { *block.as_mut_ptr().offset(off as isize) = v };
@@ -47,8 +46,7 @@ pub fn append(v: u8, chain: &mut Appender) -> io::Result<usize> {
 
 pub fn prepend(v: u8, chain: &mut Prepender) -> io::Result<usize> {
     loop {
-        {
-            let mut block = chain.first_mut();
+        if let Some(mut block) = chain.first_mut() {
             if block.prependable() > 0 {
                 let off = block.read_pos() - U8_SIZE;
                 block.set_read_pos(off);

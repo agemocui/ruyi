@@ -87,8 +87,7 @@ pub fn append(mut v: f64, chain: &mut Appender) -> io::Result<usize> {
     }
     let mut n = F64_SIZE;
     loop {
-        {
-            let mut block = chain.last_mut();
+        if let Some(mut block) = chain.last_mut() {
             let off = block.write_pos();
             let ptr_dst = unsafe { block.as_mut_ptr().offset(off as isize) };
             let appendable = block.appendable();
@@ -117,8 +116,7 @@ pub fn prepend(mut v: f64, chain: &mut Prepender) -> io::Result<usize> {
     let mut n = F64_SIZE;
     unsafe { ptr_src = ptr_src.offset(n as isize) };
     loop {
-        {
-            let mut block = chain.first_mut();
+        if let Some(mut block) = chain.first_mut() {
             let prependable = block.prependable();
             let mut ptr_dst = block.as_mut_ptr();
             if prependable >= n {

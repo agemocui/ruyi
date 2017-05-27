@@ -84,9 +84,9 @@ impl<R, W> Future for Copy<R, W>
                 }
                 if let Some(mut buf) = self.buf.take() {
                     self.len += buf.write_out(&mut w)? as u64;
+                    buf.compact();
                     if !buf.is_empty() {
                         w.need_write()?;
-                        buf.compact();
                         self.buf = Some(buf);
                         self.w = Some(w);
                         return Ok(Async::NotReady);

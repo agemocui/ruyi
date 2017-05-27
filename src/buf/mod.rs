@@ -458,8 +458,11 @@ pub struct Appender<'a> {
 
 impl<'a> Appender<'a> {
     #[inline]
-    pub fn last_mut(&mut self) -> AppendBlock {
-        AppendBlock::new(self.inner.last_mut())
+    pub fn last_mut(&mut self) -> Option<AppendBlock> {
+        match self.inner.last_mut() {
+            Some(block) => Some(AppendBlock::new(block)),
+            None => None,
+        }
     }
 
     pub fn append(&mut self, min_capacity: usize) {
@@ -509,8 +512,11 @@ pub struct Prepender<'a> {
 
 impl<'a> Prepender<'a> {
     #[inline]
-    pub fn first_mut(&mut self) -> PrependBlock {
-        PrependBlock::new(self.inner.first_mut())
+    pub fn first_mut(&mut self) -> Option<PrependBlock> {
+        match self.inner.first_mut() {
+            Some(block) => Some(PrependBlock::new(block)),
+            None => None,
+        }
     }
 
     #[inline]
@@ -522,16 +528,30 @@ impl<'a> Prepender<'a> {
 impl ByteBuf {
     #[inline]
     pub fn new() -> Self {
-        Self::with_capacity(0)
+        Self::with_growth(0)
     }
 
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         let cap = if capacity == 0 { 8 * 1024 } else { capacity };
+        let inner = Inner::with_capacity(cap);
+        let growth = inner.capacity();
         ByteBuf {
-            blocks: vec![Inner::with_capacity(cap)],
+            blocks: vec![inner],
             pos_idx: 0,
-            growth: cap,
+            growth,
+        }
+    }
+
+    #[inline]
+    pub fn with_growth(mut growth: usize) -> Self {
+        if growth < word_len!() {
+            growth = 8 * 1024;
+        }
+        ByteBuf {
+            blocks: Vec::new(),
+            pos_idx: 0,
+            growth,
         }
     }
 
@@ -599,29 +619,36 @@ impl ByteBuf {
     }
 
     pub fn try_reserve_in_head(&mut self, len: usize) -> usize {
-        let first = self.first_mut();
-        if first.is_empty() {
-            let reserved = if len > first.capacity() {
-                first.capacity()
-            } else {
-                len
-            };
+        match self.first_mut() {
+            Some(first) => {
+                if first.is_empty() {
+                    let reserved = if len > first.capacity() {
+                        first.capacity()
+                    } else {
+                        len
+                    };
 
-            #[cfg(debug_assertions)]
-            first.set_read_pos(0);
+                    #[cfg(debug_assertions)]
+                    first.set_read_pos(0);
 
-            first.set_write_pos(reserved);
-            first.set_read_pos(reserved);
-            reserved
-        } else {
-            first.read_pos()
+                    first.set_write_pos(reserved);
+                    first.set_read_pos(reserved);
+                    reserved
+                } else {
+                    first.read_pos()
+                }
+            }
+            None => 0,
         }
     }
 
     /// Reserves the minimum capacity for exactly additional more bytes to be appended to
     /// the given `ByteBuf`.  Does nothing if the capacity is already sufficient.
     pub fn reserve(&mut self, additional: usize) {
-        let appendable = self.last_mut().appendable();
+        let appendable = match self.last() {
+            Some(last) => last.appendable(),
+            None => 0,
+        };
         if appendable < additional {
             self.append_block(additional - appendable);
         }
@@ -675,7 +702,7 @@ impl ByteBuf {
                     self.pos_idx = pos_idx;
                 }
             } else {
-                return Ok(Self::with_capacity(self.growth));
+                return Ok(Self::with_growth(self.growth));
             }
         }
 
@@ -700,8 +727,15 @@ impl ByteBuf {
     }
 
     pub fn compact(&mut self) {
+        let len = self.blocks.len();
+        while self.pos_idx < len {
+            if !unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
+                break;
+            }
+            self.pos_idx += 1;
+        }
         if self.pos_idx > 0 {
-            let other_len = self.blocks.len() - self.pos_idx;
+            let other_len = len - self.pos_idx;
             let mut other_blocks = Vec::new();
             other_blocks.reserve(other_len);
 
@@ -883,35 +917,34 @@ impl ByteBuf {
     }
 
     fn locate_pos_idx(&self, index: &mut usize) -> Result<usize> {
-        let blocks = &self.blocks;
-        let mut i = self.pos_idx;
-        loop {
-            if i == blocks.len() {
-                return Err(Error::new(ErrorKind::UnexpectedEof, "Index out of bounds"));
-            }
-            let block_len = unsafe { blocks.get_unchecked(i) }.len();
+        for i in self.pos_idx..self.blocks.len() {
+            let block_len = unsafe { self.blocks.get_unchecked(i) }.len();
             if *index <= block_len {
                 return Ok(i);
             }
             *index -= block_len;
-            i += 1;
         }
+        Err(Error::new(ErrorKind::UnexpectedEof, "Index out of bounds"))
     }
 
     #[inline]
-    fn last_mut(&mut self) -> &mut Inner {
-        let n = self.blocks.len() - 1;
-        unsafe { self.blocks.get_unchecked_mut(n) }
+    fn last(&self) -> Option<&Inner> {
+        self.blocks.last()
     }
 
     #[inline]
-    fn first_mut(&mut self) -> &mut Inner {
-        unsafe { self.blocks.get_unchecked_mut(0) }
+    fn last_mut(&mut self) -> Option<&mut Inner> {
+        self.blocks.last_mut()
+    }
+
+    #[inline]
+    fn first_mut(&mut self) -> Option<&mut Inner> {
+        self.blocks.first_mut()
     }
 
     #[inline]
     fn append_block(&mut self, min_capacity: usize) {
-        let cap = if min_capacity == 0 {
+        let cap = if min_capacity <= self.growth {
             self.growth
         } else {
             min_capacity
@@ -921,7 +954,7 @@ impl ByteBuf {
 
     #[inline]
     fn prepend_block(&mut self, min_capacity: usize) {
-        let cap = if min_capacity == 0 {
+        let cap = if min_capacity <= self.growth {
             self.growth
         } else {
             min_capacity
@@ -1105,8 +1138,7 @@ impl<'a> Write for Writer<'a> {
         let mut n = buf.len();
         let mut src_dst = buf.as_ptr();
         loop {
-            {
-                let block = self.inner.last_mut();
+            if let Some(block) = self.inner.last_mut() {
                 let dst_off = block.write_pos();
                 let appendable = block.appendable();
                 if appendable >= n {
