@@ -5,7 +5,7 @@ use std::ptr;
 
 use libc;
 
-use super::io_result;
+use super::cvt;
 use super::super::into_millis;
 
 pub const OP_READ: usize = libc::EPOLLIN as usize;
@@ -48,7 +48,7 @@ impl Selector {
     #[inline]
     pub fn new() -> io::Result<Self> {
         let res = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
-        let epfd = io_result(res)?;
+        let epfd = cvt(res)?;
         Ok(Selector { epfd: epfd })
     }
 
@@ -65,7 +65,7 @@ impl Selector {
             None => -1,
         };
         let res = unsafe { libc::epoll_wait(self.epfd, events, len, millis) };
-        let n = io_result(res)? as usize;
+        let n = cvt(res)? as usize;
         Ok((n))
     }
 
@@ -76,7 +76,7 @@ impl Selector {
     {
         let mut ev = Event::new(interested_ops.into(), token.into());
         let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut ev.inner) };
-        io_result(res).map(drop)
+        cvt(res).map(drop)
     }
 
     #[inline]
@@ -86,13 +86,13 @@ impl Selector {
     {
         let mut ev = Event::new(interested_ops.into(), token.into());
         let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_MOD, fd, &mut ev.inner) };
-        io_result(res).map(drop)
+        cvt(res).map(drop)
     }
 
     #[inline]
     pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
         let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, ptr::null_mut()) };
-        io_result(res).map(drop)
+        cvt(res).map(drop)
     }
 }
 
@@ -100,7 +100,7 @@ impl Drop for Selector {
     #[inline]
     fn drop(&mut self) {
         let res = unsafe { libc::close(self.epfd) };
-        io_result(res)
+        cvt(res)
             .map(drop)
             .unwrap_or_else(|e| error!("Failed to close {:?}: {}", self, e));
     }
@@ -115,14 +115,14 @@ impl Awakener {
     #[inline]
     pub fn new() -> io::Result<Self> {
         let res = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
-        Ok(Awakener { event_fd: io_result(res)? })
+        Ok(Awakener { event_fd: cvt(res)? })
     }
 
     pub fn wakeup(&self) -> io::Result<()> {
         const NUM: *const u64 = &(::std::u64::MAX - 1);
         let res = unsafe { libc::write(self.event_fd, NUM as *const libc::c_void, 8) };
         if res == 8 {
-            io_result(res).map(drop)
+            cvt(res).map(drop)
         } else {
             error!("Error to write 8 bytes to {:?}, writen: {}", self, res);
             Ok(())
@@ -134,7 +134,7 @@ impl Awakener {
         let buf = &mut data as *mut u64;
         let res = unsafe { libc::read(self.event_fd, buf as *mut libc::c_void, 8) };
         if res == 8 {
-            io_result(res).map(drop)
+            cvt(res).map(drop)
         } else {
             error!("Error to read 8 bytes from {:?}, read: {}", self, res);
             Ok(())
@@ -152,7 +152,7 @@ impl AsRawFd for Awakener {
 impl Drop for Awakener {
     fn drop(&mut self) {
         let res = unsafe { libc::close(self.event_fd) };
-        io_result(res)
+        cvt(res)
             .map(drop)
             .unwrap_or_else(|e| error!("Failed to close {:?}: {}", self, e));
     }

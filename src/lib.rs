@@ -30,14 +30,6 @@ fn unreachable() -> ! {
     }
 }
 
-use std::fmt::Display;
-use std::io::{Error, ErrorKind};
-
-#[inline]
-fn other_io_err<E: Display>(e: E) -> Error {
-    Error::new(ErrorKind::Other, e.to_string())
-}
-
 pub mod slab;
 pub mod buf;
 pub mod nio;

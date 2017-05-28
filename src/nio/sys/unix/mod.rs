@@ -23,7 +23,7 @@ impl ErrRes for isize {
 }
 
 #[inline]
-fn io_result<V: ErrRes + PartialEq<V>>(v: V) -> io::Result<V> {
+fn cvt<V: ErrRes + PartialEq<V>>(v: V) -> io::Result<V> {
     if v != V::err_res() {
         Ok(v)
     } else {
@@ -72,14 +72,14 @@ impl fmt::Debug for IoVec {
 #[inline]
 fn readv(fd: RawFd, iov_ptr: *const IoVec, len: usize) -> io::Result<usize> {
     let res = unsafe { libc::readv(fd, iov_ptr as *const libc::iovec, len as libc::c_int) };
-    let n = io_result(res)? as usize;
+    let n = cvt(res)? as usize;
     Ok((n))
 }
 
 #[inline]
 fn writev(fd: RawFd, iov_ptr: *const IoVec, len: usize) -> io::Result<usize> {
     let res = unsafe { libc::writev(fd, iov_ptr as *const libc::iovec, len as libc::c_int) };
-    let n = io_result(res)? as usize;
+    let n = cvt(res)? as usize;
     Ok((n))
 }
 
@@ -103,9 +103,7 @@ mod bsd;
 ))]
 pub use self::bsd::*;
 
-mod tcp;
-
-pub use self::tcp::*;
+pub mod tcp;
 
 use std::fmt;
 use super::super::poll::selector;

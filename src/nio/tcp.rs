@@ -6,17 +6,17 @@ use super::{sys, IoVec, ReadV, WriteV};
 use super::poll::{Ops, Token, Pollable, Poller};
 
 pub struct TcpStream {
-    inner: sys::TcpStream,
+    inner: net::TcpStream,
 }
 
 pub struct TcpListener {
-    inner: sys::TcpListener,
+    inner: net::TcpListener,
 }
 
 impl From<net::TcpListener> for TcpListener {
     #[inline]
-    fn from(listener: net::TcpListener) -> Self {
-        TcpListener { inner: sys::TcpListener::from(listener) }
+    fn from(inner: net::TcpListener) -> Self {
+        TcpListener { inner }
     }
 }
 
@@ -42,9 +42,7 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        self.inner
-            .accept()
-            .map(|(sock, addr)| (TcpStream::new(sock), addr))
+        sys::accept(&self.inner).map(|(sock, addr)| (TcpStream::from(sock), addr))
     }
 }
 
@@ -74,8 +72,14 @@ impl fmt::Debug for TcpListener {
 
 impl TcpStream {
     #[inline]
-    fn new(sock: sys::TcpStream) -> Self {
+    fn from(sock: net::TcpStream) -> Self {
         TcpStream { inner: sock }
+    }
+
+    #[inline]
+    pub fn connect(addr: &SocketAddr) -> io::Result<(Self, bool)> {
+        let (sock, connected) = sys::connect(addr)?;
+        Ok((Self::from(sock), connected))
     }
 
     #[inline]
@@ -170,15 +174,13 @@ impl io::Write for TcpStream {
 impl ReadV for TcpStream {
     #[inline]
     fn readv(&mut self, iovs: &[IoVec]) -> io::Result<usize> {
-        self.inner
-            .readv(iovs.as_ptr() as *const sys::IoVec, iovs.len())
+        sys::readv(&self.inner, iovs.as_ptr() as *const sys::IoVec, iovs.len())
     }
 }
 
 impl WriteV for TcpStream {
     #[inline]
     fn writev(&mut self, iovs: &[IoVec]) -> io::Result<usize> {
-        self.inner
-            .writev(iovs.as_ptr() as *const sys::IoVec, iovs.len())
+        sys::writev(&self.inner, iovs.as_ptr() as *const sys::IoVec, iovs.len())
     }
 }

@@ -1,24 +1,45 @@
 use std::io;
-use std::net::{IpAddr, SocketAddr, Shutdown, ToSocketAddrs};
+use std::mem;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown};
 
 use net2::TcpBuilder;
 
-use futures::{Poll, Stream, Async};
+use futures::{Future, Poll, Stream, Async};
 
-use super::super::nio;
-use super::super::io::{AsyncRead, AsyncWrite};
-use super::super::reactor::PollableIo;
-use super::super::other_io_err;
+use nio;
+use io::{AsyncRead, AsyncWrite};
+use reactor::PollableIo;
 
 #[derive(Debug)]
 pub struct TcpStream {
     inner: PollableIo<nio::TcpStream>,
 }
 
+enum ConnectState {
+    Connecting(TcpStream),
+    Finishing(TcpStream),
+    Connected(TcpStream),
+    Dead,
+}
+
+pub struct TcpConnector {
+    state: ConnectState,
+}
+
 impl TcpStream {
     #[inline]
     fn from(sock: nio::TcpStream) -> Self {
         TcpStream { inner: PollableIo::new(sock) }
+    }
+
+    pub fn connect(addr: &SocketAddr) -> io::Result<TcpConnector> {
+        let (sock, connected) = nio::TcpStream::connect(addr)?;
+        let io = Self::from(sock);
+        let state = match connected {
+            false => ConnectState::Connecting(io),
+            true => ConnectState::Connected(io),
+        };
+        Ok(TcpConnector { state })
     }
 
     #[inline]
@@ -134,8 +155,7 @@ pub struct Incoming {
 }
 
 pub struct TcpListenerBuilder {
-    addr: String,
-    port: u16,
+    addr: SocketAddr,
     backlog: i32,
     ttl: Option<u32>,
     only_v6: Option<bool>,
@@ -186,8 +206,7 @@ impl Default for TcpListenerBuilder {
     #[inline]
     fn default() -> Self {
         TcpListenerBuilder {
-            addr: "0.0.0.0".to_string(),
-            port: 0,
+            addr: SocketAddr::new(IpAddr::from(Ipv4Addr::from(0)), 0),
             backlog: 128,
             ttl: None,
             only_v6: None,
@@ -197,17 +216,14 @@ impl Default for TcpListenerBuilder {
 
 impl TcpListenerBuilder {
     #[inline]
-    pub fn addr<A: Into<String>>(mut self, addr: Option<A>) -> Self {
-        self.addr = match addr {
-            Some(addr) => addr.into(),
-            None => "0.0.0.0".to_string(),
-        };
+    pub fn addr(mut self, addr: SocketAddr) -> Self {
+        self.addr = addr;
         self
     }
 
     #[inline]
     pub fn port(mut self, port: u16) -> Self {
-        self.port = port;
+        self.addr.set_port(port);
         self
     }
 
@@ -230,13 +246,9 @@ impl TcpListenerBuilder {
     }
 
     pub fn build(self) -> io::Result<TcpListener> {
-        let addr =
-            self.addr
-                .parse::<IpAddr>()
-                .map_err(|_| other_io_err(format!("Error to parse address: {}", self.addr)))?;
-        let builder = match addr {
-            IpAddr::V4(_) => TcpBuilder::new_v4()?,
-            IpAddr::V6(_) => TcpBuilder::new_v6()?,
+        let builder = match self.addr {
+            SocketAddr::V4(..) => TcpBuilder::new_v4()?,
+            SocketAddr::V6(..) => TcpBuilder::new_v6()?,
         };
         if let Some(ttl) = self.ttl {
             builder.ttl(ttl)?;
@@ -244,10 +256,9 @@ impl TcpListenerBuilder {
         if let Some(only_v6) = self.only_v6 {
             builder.only_v6(only_v6)?;
         }
-        let bind_addr = SocketAddr::new(addr, self.port);
         let listener = builder
             .reuse_address(true)?
-            .bind(bind_addr)?
+            .bind(self.addr)?
             .listen(self.backlog)?;
         listener.set_nonblocking(true)?;
         Ok(TcpListener::from(nio::TcpListener::from(listener)))
@@ -274,12 +285,36 @@ impl Stream for Incoming {
     }
 }
 
-pub struct TcpConnector {
-    _io: PollableIo<nio::TcpStream>,
-}
+impl Future for TcpConnector {
+    type Item = TcpStream;
+    type Error = io::Error;
 
-impl TcpConnector {}
-
-pub fn connect<A: ToSocketAddrs>(_addr: A) -> io::Result<TcpConnector> {
-    unimplemented!()
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match mem::replace(&mut self.state, ConnectState::Dead) {
+            ConnectState::Connecting(mut sock) => {
+                sock.need_write()?;
+                self.state = ConnectState::Finishing(sock);
+                Ok(Async::NotReady)
+            }
+            ConnectState::Finishing(mut sock) => {
+                match sock.is_writable() {
+                    true => {
+                        match sock.take_error()? {
+                            None => {
+                                sock.no_need_write()?;
+                                Ok(Async::Ready(sock))
+                            },
+                            Some(e) => Err(e),
+                        }
+                    }
+                    false => {
+                        self.state = ConnectState::Finishing(sock);
+                        Ok(Async::NotReady)
+                    }
+                }
+            }
+            ConnectState::Connected(sock) => Ok(Async::Ready(sock)),
+            _ => ::unreachable(),
+        }
+    }
 }
