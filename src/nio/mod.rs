@@ -48,7 +48,5 @@ impl<'a, W: WriteV> WriteV for &'a mut W {
     }
 }
 
-pub trait PollRead: ReadV {}
-
 mod tcp;
 pub use self::tcp::*;

@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::slice::{self, Iter};
 use std::str;
 
-use super::nio::{IoVec, ReadV, WriteV};
+use nio::{IoVec, ReadV, WriteV};
 
 #[derive(Debug)]
 struct Alloc {

@@ -3,9 +3,8 @@ use std::mem;
 
 use futures::{Poll, Future, Async};
 
-use super::super::{AsyncRead, AsyncWrite};
-use super::super::super::buf::ByteBuf;
-use super::super::super::unreachable;
+use io::{AsyncRead, AsyncWrite};
+use buf::ByteBuf;
 
 enum ReadState<R> {
     Reading(R),
@@ -74,7 +73,7 @@ impl<R, W> Future for Copy<R, W>
                 }
             }
             ReadState::Done(r) => self.r = ReadState::Done(r),
-            _ => unreachable(),
+            _ => ::unreachable(),
         }
 
         match self.w.take() {
@@ -101,10 +100,10 @@ impl<R, W> Future for Copy<R, W>
                         Ok(Async::NotReady)
                     }
                     ReadState::Done(r) => Ok(Async::Ready((self.len, r, w))),
-                    _ => unreachable(),
+                    _ => ::unreachable(),
                 }
             }
-            None => unreachable(),
+            None => ::unreachable(),
         }
     }
 }

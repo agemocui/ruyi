@@ -7,8 +7,7 @@ use futures::{Future, Stream, Poll, Async};
 
 use super::event_loop::TaskId;
 use super::{IntoTask, PeriodicTimer};
-use super::super::slab::{self, Slab};
-use super::super::unreachable;
+use slab::{self, Slab};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimerId {
@@ -148,7 +147,7 @@ impl Inner {
         match prev {
             Token::Entry(prev_timer_id) => self.get_mut_entry(prev_timer_id).next = token,
             Token::Slot(prev_slot_idx) => self.get_mut_slot(prev_slot_idx).next = token,
-            Token::Nil => unreachable(),
+            Token::Nil => ::unreachable(),
         }
         self.get_mut_slot(slot_idx).prev = token;
         timer_id
@@ -175,7 +174,7 @@ impl Inner {
         match prev {
             Token::Entry(prev_timer_id) => self.get_mut_entry(prev_timer_id).next = token,
             Token::Slot(prev_slot_idx) => self.get_mut_slot(prev_slot_idx).next = token,
-            Token::Nil => unreachable(),
+            Token::Nil => ::unreachable(),
         }
         self.get_mut_slot(slot_idx).prev = token;
         need_reschedule
@@ -192,7 +191,7 @@ impl Inner {
         match entry.next {
             Token::Entry(timer_id) => self.get_mut_entry(timer_id).prev = entry.prev,
             Token::Slot(slot_idx) => self.get_mut_slot(slot_idx).prev = entry.prev,
-            Token::Nil => unreachable(), // expired
+            Token::Nil => ::unreachable(), // expired
         }
     }
 
@@ -205,7 +204,7 @@ impl Inner {
                 return;
             }
             Token::Entry(id) => id,
-            Token::Nil => unreachable(),
+            Token::Nil => ::unreachable(),
         };
         let next_slot;
         let mut exit = false;
@@ -237,7 +236,7 @@ impl Inner {
                     next_slot = index;
                     break;
                 }
-                Token::Nil => unreachable(),
+                Token::Nil => ::unreachable(),
             }
         }
         self.get_mut_slot(current_slot).next = Token::Slot(next_slot);
@@ -322,7 +321,7 @@ impl Timer {
                 self.state = TimerState::Scheduled(timer_id);
                 Ok(Async::NotReady)
             }
-            TimerState::Cancelled => unreachable(),
+            TimerState::Cancelled => ::unreachable(),
         }
     }
 }
@@ -375,7 +374,7 @@ impl Future for Timeout {
         match self.timer.poll() {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(())) => Err(io::Error::from(io::ErrorKind::TimedOut)),
-            _ => unreachable(),
+            _ => ::unreachable(),
         }
     }
 }

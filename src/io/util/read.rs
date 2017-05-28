@@ -3,9 +3,8 @@ use std::mem;
 
 use futures::{Poll, Future, Async};
 
-use super::super::AsyncRead;
-use super::super::super::buf::ByteBuf;
-use super::super::super::unreachable;
+use io::AsyncRead;
+use buf::ByteBuf;
 
 enum State<R> {
     Reading { r: R },
@@ -32,7 +31,7 @@ impl<R> Future for Read<R>
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let mut r = match mem::replace(&mut self.state, State::Done) {
             State::Reading { r } => r,
-            State::Done => unreachable(),
+            State::Done => ::unreachable(),
         };
         if !r.is_readable() {
             self.state = State::Reading { r };

@@ -2,8 +2,8 @@ use std::cell::UnsafeCell;
 use std::io;
 use std::rc::Rc;
 
-use super::super::{AsyncRead, AsyncWrite};
-use super::super::super::nio;
+use io::{AsyncRead, AsyncWrite};
+use nio;
 
 pub struct ReadHalf<R> {
     inner: Rc<UnsafeCell<R>>,

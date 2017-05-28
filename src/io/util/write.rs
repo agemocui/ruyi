@@ -3,9 +3,8 @@ use std::mem;
 
 use futures::{Poll, Future, Async};
 
-use super::super::AsyncWrite;
-use super::super::super::buf::ByteBuf;
-use super::super::super::unreachable;
+use io::AsyncWrite;
+use buf::ByteBuf;
 
 enum State<W> {
     Writing { buf: ByteBuf, w: W },
@@ -32,7 +31,7 @@ impl<W> Future for Write<W>
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let (mut buf, mut w) = match mem::replace(&mut self.state, State::Done) {
             State::Writing { buf, w } => (buf, w),
-            State::Done => unreachable(),
+            State::Done => ::unreachable(),
         };
         if !w.is_writable() {
             self.state = State::Writing { buf, w };

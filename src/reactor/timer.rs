@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use futures::{Future, Stream, Async, Poll};
 
 use super::event_loop::TimerTaskId;
-use super::super::unreachable;
 
 #[derive(Debug, Clone, Copy)]
 enum TimerState {
@@ -56,7 +55,7 @@ impl Future for Timer {
                 self.state = TimerState::Scheduled(id);
                 Ok(Async::NotReady)
             }
-            TimerState::Cancelled => unreachable(),
+            TimerState::Cancelled => ::unreachable(),
         }
     }
 }
@@ -133,7 +132,7 @@ impl Stream for PeriodicTimer {
                 self.state = PeriodicTimerState::Scheduled(timer_task_id);
                 Ok(Async::NotReady)
             }
-            PeriodicTimerState::Cancelled => unreachable(),
+            PeriodicTimerState::Cancelled => ::unreachable(),
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::io;
 
-use super::nio::{ReadV, WriteV};
+use nio::{ReadV, WriteV};
 
 pub trait AsyncRead: io::Read + ReadV {
     fn need_read(&mut self) -> io::Result<()>;

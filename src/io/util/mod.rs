@@ -1,8 +1,8 @@
 use std::cell::UnsafeCell;
 use std::io;
 
-use super::super::buf::{ByteBuf, Appender};
-use super::AsyncRead;
+use buf::{ByteBuf, Appender};
+use io::AsyncRead;
 
 const RECV_BUF_SIZE: usize = 128 * 1024;
 

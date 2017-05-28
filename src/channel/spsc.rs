@@ -10,8 +10,8 @@ use futures::stream::Stream;
 use futures::{Poll, Async};
 
 use super::err::{SendError, TrySendError, RecvError, TryRecvError};
-use super::super::nio::{Awakener, Pollable, Poller, Ops, Token};
-use super::super::reactor::{IntoStream, PollableIo};
+use nio::{Awakener, Pollable, Poller, Ops, Token};
+use reactor::{IntoStream, PollableIo};
 
 struct Inner<T> {
     buf_ptr: *mut T,

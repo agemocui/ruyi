@@ -1,6 +1,6 @@
 use std::io;
 
-use super::super::nio::{Pollable, Ops};
+use nio::{Pollable, Ops};
 
 #[derive(Debug)]
 pub struct PollableIo<P: Pollable> {
