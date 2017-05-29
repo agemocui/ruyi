@@ -65,11 +65,11 @@ impl<R, W> Future for Copy<R, W>
                                 io::ErrorKind::WouldBlock => r.need_read()?,
                                 _ => return Err(e),
                             }
-                            self.r = ReadState::Reading(r)
+                            self.r = ReadState::Reading(r);
                         }
                     }
                 } else {
-                    self.r = ReadState::Reading(r)
+                    self.r = ReadState::Reading(r);
                 }
             }
             ReadState::Done(r) => self.r = ReadState::Done(r),

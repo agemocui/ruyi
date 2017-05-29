@@ -728,10 +728,7 @@ impl ByteBuf {
 
     pub fn compact(&mut self) {
         let len = self.blocks.len();
-        while self.pos_idx < len {
-            if !unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
-                break;
-            }
+        while self.pos_idx < len && unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
             self.pos_idx += 1;
         }
         if self.pos_idx > 0 {

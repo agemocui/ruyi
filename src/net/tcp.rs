@@ -303,7 +303,7 @@ impl Future for TcpConnector {
                             None => {
                                 sock.no_need_write()?;
                                 Ok(Async::Ready(sock))
-                            },
+                            }
                             Some(e) => Err(e),
                         }
                     }
