@@ -548,6 +548,8 @@ impl Inner {
 
     #[inline]
     fn spawn(&mut self, task: Task) {
+        debug_assert!(self.main_task.is_some(), "Can only spawn inside reactor::run");
+
         self.spawn_stack.push(self.current_task);
         self.current_task = self.tasks.insert(task);
         match unsafe { self.tasks.get_unchecked_mut(self.current_task) }.poll() {
