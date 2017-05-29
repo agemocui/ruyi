@@ -40,8 +40,7 @@ fn codec_u32() {
     let mut n = buf.append(0x12345678, u32::big_endian::append).unwrap();
     assert_eq!(n, 4);
 
-    n = buf.prepend(0x98765432, u32::big_endian::prepend)
-        .unwrap();
+    n = buf.prepend(0x98765432, u32::big_endian::prepend).unwrap();
     assert_eq!(n, 4);
 
     let mut i = buf.get(0, u32::big_endian::get).unwrap();
@@ -170,11 +169,9 @@ fn codec_u8s() {
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
-    let mut n = buf.append(u8s::filling(6, 20), u8s::append_fill)
-        .unwrap();
+    let mut n = buf.append(u8s::filling(6, 20), u8s::append_fill).unwrap();
     assert_eq!(20, n);
-    n = buf.prepend(u8s::filling(4, 20), u8s::prepend_fill)
-        .unwrap();
+    n = buf.prepend(u8s::filling(4, 20), u8s::prepend_fill).unwrap();
     assert_eq!(20, n);
 
     let data1 = [4; 20];
@@ -250,8 +247,7 @@ fn codec_str_utf8() {
     assert_eq!(str2.to_string() + str1, buf.get(0, str::utf8::get).unwrap());
 
     assert_eq!(str2,
-               buf.read_exact(str2.len(), str::utf8::read_exact)
-                   .unwrap());
+               buf.read_exact(str2.len(), str::utf8::read_exact).unwrap());
 
     assert_eq!(str1, buf.read(str::utf8::read).unwrap());
 }

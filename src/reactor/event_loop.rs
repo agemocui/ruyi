@@ -199,8 +199,7 @@ impl TimerQueue {
 
     #[inline]
     fn add_periodic(&mut self, at: Instant, period: Duration, task: TaskId) -> TimerTaskId {
-        let id = self.timer_tasks
-            .insert(TimerTask::periodic(period, task));
+        let id = self.timer_tasks.insert(TimerTask::periodic(period, task));
         self.heap.push(Expiration::new(at, id));
         id
     }
@@ -548,7 +547,7 @@ impl Inner {
 
     #[inline]
     fn spawn(&mut self, task: Task) {
-        debug_assert!(self.main_task.is_some(), "Can only spawn inside reactor::run");
+        debug_assert!(self.main_task.is_some(), "Missing main task");
 
         self.spawn_stack.push(self.current_task);
         self.current_task = self.tasks.insert(task);
@@ -655,8 +654,7 @@ impl Inner {
 
     #[inline]
     fn schedule(&mut self, at: Instant, period: Duration) -> TimerTaskId {
-        self.timer_queue
-            .add_periodic(at, period, self.current_task)
+        self.timer_queue.add_periodic(at, period, self.current_task)
     }
 
     #[inline]

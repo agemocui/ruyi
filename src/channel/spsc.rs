@@ -85,8 +85,7 @@ impl<T> Inner<T> {
 
         let i = self.effective_index(front) as isize;
         let v = unsafe { ptr::read(self.buf_ptr.offset(i)) };
-        self.front
-            .store(front.wrapping_add(1), Ordering::Release);
+        self.front.store(front.wrapping_add(1), Ordering::Release);
         Some(v)
     }
 }

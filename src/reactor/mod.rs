@@ -117,9 +117,8 @@ fn reregister_io<P, B>(pollable: B,
     where P: Pollable,
           B: Borrow<P>
 {
-    CURRENT_LOOP.with(|eloop| {
-                          eloop.reregister_io(pollable, interested_ops, sched_idx, sched_io_ops)
-                      })
+    CURRENT_LOOP
+        .with(|eloop| eloop.reregister_io(pollable, interested_ops, sched_idx, sched_io_ops))
 }
 
 #[inline]
