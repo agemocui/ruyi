@@ -186,6 +186,16 @@ impl Inner {
             shared: self.shared.clone(),
         }
     }
+
+    #[inline]
+    fn starts_with(&self, bytes: &[u8]) -> bool {
+        self.as_slice().starts_with(bytes)
+    }
+
+    #[inline]
+    fn ends_with(&self, bytes: &[u8]) -> bool {
+        self.as_slice().ends_with(bytes)
+    }
 }
 
 #[derive(Debug)]
@@ -726,13 +736,69 @@ impl ByteBuf {
         Ok(other)
     }
 
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        let mut pos_idx = self.pos_idx;
+        let mut i = ::std::usize::MAX;
+        while pos_idx < self.blocks.len() {
+            if !unsafe { self.blocks.get_unchecked(pos_idx) }.is_empty() {
+                if i != ::std::usize::MAX {
+                    return None;
+                }
+                i = pos_idx;
+            }
+            pos_idx += 1;
+        }
+
+        if i != ::std::usize::MAX {
+            Some(unsafe { self.blocks.get_unchecked(i) }.as_slice())
+        } else {
+            Some(&[])
+        }
+    }
+
+    pub fn starts_with(&self, mut bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return true;
+        }
+        for block in &self.blocks[self.pos_idx..] {
+            if block.len() < bytes.len() {
+                let (l, r) = bytes.split_at(block.len());
+                bytes = r;
+                if !block.starts_with(l) {
+                    return false;
+                }
+            } else {
+                return block.starts_with(bytes);
+            }
+        }
+        false
+    }
+
+    pub fn ends_with(&self, mut bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return true;
+        }
+        for block in (&self.blocks[self.pos_idx..]).iter().rev() {
+            if block.len() < bytes.len() {
+                let (l, r) = bytes.split_at(bytes.len() - block.len());
+                bytes = l;
+                if !block.ends_with(r) {
+                    return false;
+                }
+            } else {
+                return block.ends_with(bytes);
+            }
+        }
+        false
+    }
+
     pub fn compact(&mut self) {
-        let len = self.blocks.len();
-        while self.pos_idx < len && unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
+        while self.pos_idx < self.blocks.len() &&
+              unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
             self.pos_idx += 1;
         }
         if self.pos_idx > 0 {
-            let other_len = len - self.pos_idx;
+            let other_len = self.blocks.len() - self.pos_idx;
             let mut other_blocks = Vec::new();
             other_blocks.reserve(other_len);
 

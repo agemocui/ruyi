@@ -276,3 +276,25 @@ fn compare() {
     b3.prepend(7, u8::prepend).unwrap();
     assert_eq!(b3 < b1, true);
 }
+
+#[test]
+fn starts_with() {
+    let mut buf = ByteBuf::with_growth(1);
+    for i in 0..100 {
+        buf.append(i, u8::append).unwrap();
+    }
+    let bytes = [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12];
+    assert!(buf.starts_with(&bytes[0..11]));
+    assert!(!buf.starts_with(&bytes));
+}
+
+#[test]
+fn ends_with() {
+    let mut buf = ByteBuf::with_growth(1);
+    for i in 0..100 {
+        buf.append(i, u8::append).unwrap();
+    }
+    let bytes = [88u8, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99];
+    assert!(buf.ends_with(&bytes[1..]));
+    assert!(!buf.ends_with(&bytes));
+}
