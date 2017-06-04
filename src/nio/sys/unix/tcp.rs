@@ -61,12 +61,12 @@ pub fn writev(sock: &TcpStream, iov_ptr: *const IoVec, len: usize) -> io::Result
 fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<SocketAddr> {
     match storage.ss_family as libc::c_int {
         libc::AF_INET => {
-            assert!(len >= mem::size_of::<libc::sockaddr_in>());
+            debug_assert!(len >= mem::size_of::<libc::sockaddr_in>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in) };
             Ok(SocketAddr::V4(unsafe { mem::transmute(addr) }))
         }
         libc::AF_INET6 => {
-            assert!(len >= mem::size_of::<libc::sockaddr_in6>());
+            debug_assert!(len >= mem::size_of::<libc::sockaddr_in6>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
             Ok(SocketAddr::V6(unsafe { mem::transmute(addr) }))
         }

@@ -54,6 +54,7 @@ impl<'a, W: AsyncWrite> AsyncWrite for &'a mut W {
 
 mod util;
 
+pub use self::util::{IStream, OStream};
 pub use self::util::read::*;
 pub use self::util::write::*;
 pub use self::util::copy::*;
