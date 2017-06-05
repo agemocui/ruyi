@@ -298,3 +298,36 @@ fn ends_with() {
     assert!(buf.ends_with(&bytes[1..]));
     assert!(!buf.ends_with(&bytes));
 }
+
+#[test]
+fn find() {
+    let mut v = Vec::with_capacity(100);
+    for i in 0..100 {
+        v.push(i);
+    }
+    let mut buf = ByteBuf::with_growth(1);
+    buf.append(&v[..], u8s::append).unwrap();
+    buf.skip(13);
+    let bytes = &v[13..];
+
+    let mut needle = &bytes[30..57];
+    assert_eq!(buf.find(needle, 0), Some(30));
+    assert_eq!(buf.find(needle, 23), Some(30));
+    assert_eq!(buf.find(needle, 30), Some(30));
+    assert_eq!(buf.find(needle, 33), None);
+    assert_eq!(buf.find(needle, 61), None);
+
+    needle = &bytes[11..12];
+    assert_eq!(buf.find(needle, 0), Some(11));
+    assert_eq!(buf.find(needle, 9), Some(11));
+    assert_eq!(buf.find(needle, 11), Some(11));
+    assert_eq!(buf.find(needle, 12), None);
+    assert_eq!(buf.find(needle, 13), None);
+
+    needle = &bytes[25..28];
+    assert_eq!(buf.find(needle, 0), Some(25));
+    assert_eq!(buf.find(needle, 11), Some(25));
+    assert_eq!(buf.find(needle, 25), Some(25));
+    assert_eq!(buf.find(needle, 27), None);
+    assert_eq!(buf.find(needle, 29), None);
+}

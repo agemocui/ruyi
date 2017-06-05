@@ -13,6 +13,8 @@ use std::str;
 
 use nio::{IoVec, ReadV, WriteV};
 
+const EMPTY: &[u8] = &[];
+
 #[derive(Debug)]
 struct Alloc {
     ptr: *mut u8,
@@ -156,8 +158,15 @@ impl Inner {
     }
 
     #[inline]
-    fn as_slice(&self) -> &[u8] {
+    fn as_bytes(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), self.len()) }
+    }
+
+    #[inline]
+    fn as_bytes_from(&self, from: usize) -> &[u8] {
+        let i = self.read_pos() + from;
+        let len = self.write_pos() - from;
+        unsafe { slice::from_raw_parts(self.ptr_at(i), len) }
     }
 
     #[inline]
@@ -188,13 +197,13 @@ impl Inner {
     }
 
     #[inline]
-    fn starts_with(&self, bytes: &[u8]) -> bool {
-        self.as_slice().starts_with(bytes)
+    fn starts_with(&self, needle: &[u8]) -> bool {
+        self.as_bytes().starts_with(needle)
     }
 
     #[inline]
-    fn ends_with(&self, bytes: &[u8]) -> bool {
-        self.as_slice().ends_with(bytes)
+    fn ends_with(&self, needle: &[u8]) -> bool {
+        self.as_bytes().ends_with(needle)
     }
 }
 
@@ -738,58 +747,101 @@ impl ByteBuf {
 
     pub fn as_bytes(&self) -> Option<&[u8]> {
         let mut pos_idx = self.pos_idx;
-        let mut i = ::std::usize::MAX;
+        let mut idx = None;
         while pos_idx < self.blocks.len() {
             if !unsafe { self.blocks.get_unchecked(pos_idx) }.is_empty() {
-                if i != ::std::usize::MAX {
+                if idx.is_some() {
                     return None;
                 }
-                i = pos_idx;
+                idx = Some(pos_idx);
             }
             pos_idx += 1;
         }
 
-        if i != ::std::usize::MAX {
-            Some(unsafe { self.blocks.get_unchecked(i) }.as_slice())
-        } else {
-            Some(&[])
+        match idx {
+            Some(i) => Some(unsafe { self.blocks.get_unchecked(i) }.as_bytes()),
+            None => Some(EMPTY),
         }
     }
 
-    pub fn starts_with(&self, mut bytes: &[u8]) -> bool {
-        if bytes.is_empty() {
-            return true;
-        }
-        for block in &self.blocks[self.pos_idx..] {
-            if block.len() < bytes.len() {
-                let (l, r) = bytes.split_at(block.len());
-                bytes = r;
+    #[inline]
+    fn starts_with_internal(&self, mut needle: &[u8], pos_idx: usize) -> bool {
+        for block in &self.blocks[pos_idx..] {
+            if block.len() < needle.len() {
+                let (l, r) = needle.split_at(block.len());
+                needle = r;
                 if !block.starts_with(l) {
                     return false;
                 }
             } else {
-                return block.starts_with(bytes);
+                return block.starts_with(needle);
             }
         }
         false
     }
 
-    pub fn ends_with(&self, mut bytes: &[u8]) -> bool {
-        if bytes.is_empty() {
+    pub fn starts_with(&self, needle: &[u8]) -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        self.starts_with_internal(needle, self.pos_idx)
+    }
+
+    pub fn ends_with(&self, mut needle: &[u8]) -> bool {
+        if needle.is_empty() {
             return true;
         }
         for block in (&self.blocks[self.pos_idx..]).iter().rev() {
-            if block.len() < bytes.len() {
-                let (l, r) = bytes.split_at(bytes.len() - block.len());
-                bytes = l;
+            if block.len() < needle.len() {
+                let (l, r) = needle.split_at(needle.len() - block.len());
+                needle = l;
                 if !block.ends_with(r) {
                     return false;
                 }
             } else {
-                return block.ends_with(bytes);
+                return block.ends_with(needle);
             }
         }
         false
+    }
+
+    pub fn find(&self, needle: &[u8], mut from: usize) -> Option<usize> {
+        let mut off = from;
+        let mut pos_idx = match self.locate_pos_idx(&mut off) {
+            Ok(i) => i,
+            Err(..) => return None,
+        };
+        if needle.is_empty() {
+            return Some(from);
+        }
+        let mut bytes = unsafe { self.blocks.get_unchecked(pos_idx) }.as_bytes_from(off);
+        loop {
+            if bytes.len() >= needle.len() {
+                bytes = match bytes.windows(needle.len()).position(|w| w == needle) {
+                    Some(n) => return Some(from + n),
+                    None => {
+                        let n = bytes.len() - needle.len() + 1;
+                        from += n;
+                        &bytes[n..]
+                    }
+                };
+            }
+            pos_idx += 1;
+            for m in 0..bytes.len() {
+                let (left, right) = needle.split_at(bytes.len() - m);
+                if &bytes[m..] == left {
+                    if self.starts_with_internal(right, pos_idx) {
+                        return Some(from + m);
+                    }
+                }
+            }
+            if pos_idx >= self.blocks.len() {
+                break;
+            }
+            from += bytes.len();
+            bytes = unsafe { self.blocks.get_unchecked(pos_idx) }.as_bytes();
+        }
+        None
     }
 
     pub fn compact(&mut self) {
@@ -1028,8 +1080,6 @@ impl ByteBuf {
 
 impl Ord for ByteBuf {
     fn cmp(&self, other: &Self) -> Ordering {
-        const EMPTY: &[u8] = &[0; 0];
-
         let mut none1 = false;
         let mut none2 = false;
         let mut iter = self.blocks.iter();
@@ -1044,7 +1094,7 @@ impl Ord for ByteBuf {
                     return ord;
                 }
                 slice = match iter.next() {
-                    Some(block) => block.as_slice(),
+                    Some(block) => block.as_bytes(),
                     None => return Ordering::Less,
                 };
                 other_slice = s2;
@@ -1055,7 +1105,7 @@ impl Ord for ByteBuf {
                     return ord;
                 }
                 other_slice = match other_iter.next() {
-                    Some(block) => block.as_slice(),
+                    Some(block) => block.as_bytes(),
                     None => return Ordering::Greater,
                 };
                 slice = s2;
@@ -1068,14 +1118,14 @@ impl Ord for ByteBuf {
                     return Ordering::Equal;
                 }
                 slice = match iter.next() {
-                    Some(block) => block.as_slice(),
+                    Some(block) => block.as_bytes(),
                     None => {
                         none1 = true;
                         EMPTY
                     }
                 };
                 other_slice = match other_iter.next() {
-                    Some(block) => block.as_slice(),
+                    Some(block) => block.as_bytes(),
                     None => {
                         none2 = true;
                         EMPTY
@@ -1138,7 +1188,7 @@ impl<'a> Iterator for Bytes<'a> {
                 None => return None,
             }
             self.iter_u8 = match self.iter_inner.next() {
-                Some(inner) => Some(inner.as_slice().iter()),
+                Some(inner) => Some(inner.as_bytes().iter()),
                 None => None,
             };
         }
