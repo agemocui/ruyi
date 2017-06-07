@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::mem;
 
 use ruyi::buf::ByteBuf;
-use ruyi::buf::codec::{u8, u8s, u32, f64, str};
+use ruyi::buf::codec::{u8, u8s, u32, f64};
 
 #[test]
 fn read_write() {
@@ -233,23 +233,27 @@ fn codec_f64() {
 
 #[test]
 fn codec_str_utf8() {
+    use std::str::from_utf8;
     let mut buf = ByteBuf::with_growth(1);
     // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
     let str1 = "bytebuf string codec test";
-    assert_eq!(str1.len(), buf.append(str1, str::utf8::append).unwrap());
+    assert_eq!(str1.len(),
+               buf.append(str1.as_bytes(), u8s::append).unwrap());
 
     let str2 = "prepend str utf8 test";
-    assert_eq!(str2.len(), buf.prepend(str2, str::utf8::prepend).unwrap());
+    assert_eq!(str2.len(),
+               buf.prepend(str2.as_bytes(), u8s::prepend).unwrap());
 
-    assert_eq!(str2.to_string() + str1, buf.get(0, str::utf8::get).unwrap());
+    assert_eq!(str2.to_string() + str1,
+               from_utf8(&buf.get(0, u8s::get).unwrap()).unwrap());
 
     assert_eq!(str2,
-               buf.read_exact(str2.len(), str::utf8::read_exact).unwrap());
+               from_utf8(&buf.read_exact(str2.len(), u8s::read_exact).unwrap()).unwrap());
 
-    assert_eq!(str1, buf.read(str::utf8::read).unwrap());
+    assert_eq!(str1, from_utf8(&buf.read(u8s::read).unwrap()).unwrap());
 }
 
 #[test]
