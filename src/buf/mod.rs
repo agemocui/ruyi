@@ -1,5 +1,8 @@
 pub mod codec;
 
+mod windows;
+pub use self::windows::{Window, Windows};
+
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem;
@@ -163,10 +166,8 @@ impl Inner {
     }
 
     #[inline]
-    fn as_bytes_from(&self, from: usize) -> &[u8] {
-        let i = self.read_pos() + from;
-        let len = self.write_pos() - from;
-        unsafe { slice::from_raw_parts(self.ptr_at(i), len) }
+    fn get_bytes(&self, from: usize, len: usize) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.ptr_at(from), len) }
     }
 
     #[inline]
@@ -210,7 +211,7 @@ impl Inner {
 #[derive(Debug)]
 pub struct ByteBuf {
     blocks: Vec<Inner>,
-    pos_idx: usize,
+    pos: usize,
     growth: usize,
 }
 
@@ -265,13 +266,13 @@ impl<'a> Iterator for ReadIter<'a> {
     type Item = ReadBlock<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.inner.pos_idx() < self.inner.num_of_blocks() {
-            let i = self.inner.pos_idx();
+        while self.inner.pos() < self.inner.num_of_blocks() {
+            let i = self.inner.pos();
             let inner = unsafe { &mut *self.inner.mut_ptr_at(i) };
             if !inner.is_empty() {
                 return Some(ReadBlock::new(inner));
             }
-            self.inner.inc_pos_idx();
+            self.inner.inc_pos();
         }
         None
     }
@@ -322,15 +323,15 @@ impl<'a> GetBlock<'a> {
 
 pub struct GetIter<'a> {
     blocks: &'a [Inner],
-    pos_idx: usize,
+    pos: usize,
     // offset of the first u8 in the first block
     init_index: usize,
 }
 
 impl<'a> GetIter<'a> {
     pub fn len(&self) -> usize {
-        let init_val = unsafe { self.blocks.get_unchecked(self.pos_idx).len() - self.init_index };
-        self.blocks[self.pos_idx + 1..]
+        let init_val = unsafe { self.blocks.get_unchecked(self.pos).len() - self.init_index };
+        self.blocks[self.pos + 1..]
             .iter()
             .fold(0, |remaining, b| remaining + b.len()) + init_val
     }
@@ -340,9 +341,9 @@ impl<'a> Iterator for GetIter<'a> {
     type Item = GetBlock<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.pos_idx < self.blocks.len() {
-            let inner = unsafe { self.blocks.get_unchecked(self.pos_idx) };
-            self.pos_idx += 1;
+        while self.pos < self.blocks.len() {
+            let inner = unsafe { self.blocks.get_unchecked(self.pos) };
+            self.pos += 1;
             if self.init_index > 0 {
                 let index = self.init_index;
                 self.init_index = 0;
@@ -404,7 +405,7 @@ impl<'a> SetBlock<'a> {
 
 pub struct SetIter<'a> {
     blocks: &'a mut [Inner],
-    pos_idx: usize,
+    pos: usize,
     // offset of the first u8 in the first block
     init_index: usize,
 }
@@ -413,9 +414,9 @@ impl<'a> Iterator for SetIter<'a> {
     type Item = SetBlock<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.pos_idx < self.blocks.len() {
-            let inner = unsafe { &mut *self.blocks.as_mut_ptr().offset(self.pos_idx as isize) };
-            self.pos_idx += 1;
+        while self.pos < self.blocks.len() {
+            let inner = unsafe { &mut *self.blocks.as_mut_ptr().offset(self.pos as isize) };
+            self.pos += 1;
             if self.init_index > 0 {
                 let index = self.init_index;
                 self.init_index = 0;
@@ -557,7 +558,7 @@ impl ByteBuf {
         let growth = inner.capacity();
         ByteBuf {
             blocks: vec![inner],
-            pos_idx: 0,
+            pos: 0,
             growth,
         }
     }
@@ -569,7 +570,7 @@ impl ByteBuf {
         }
         ByteBuf {
             blocks: Vec::new(),
-            pos_idx: 0,
+            pos: 0,
             growth,
         }
     }
@@ -580,7 +581,7 @@ impl ByteBuf {
     }
 
     pub fn len(&self) -> usize {
-        (&self.blocks[self.pos_idx..])
+        (&self.blocks[self.pos..])
             .iter()
             .fold(0, |len, b| len + b.len())
     }
@@ -603,24 +604,24 @@ impl ByteBuf {
     pub fn get<T, G>(&mut self, mut index: usize, get: G) -> Result<T>
         where G: Fn(&mut GetIter) -> Result<T>
     {
-        let pos_idx = self.locate_pos_idx(&mut index)?;
-        get(&mut self.get_iter(pos_idx, index))
+        let pos = self.locate_pos(&mut index)?;
+        get(&mut self.get_iter(pos, index))
     }
 
     #[inline]
     pub fn get_exact<T, G>(&mut self, mut index: usize, len: usize, get_exact: G) -> Result<T>
         where G: Fn(&mut GetIter, usize) -> Result<T>
     {
-        let pos_idx = self.locate_pos_idx(&mut index)?;
-        get_exact(&mut self.get_iter(pos_idx, index), len)
+        let pos = self.locate_pos(&mut index)?;
+        get_exact(&mut self.get_iter(pos, index), len)
     }
 
     #[inline]
     pub fn set<T, S>(&mut self, mut index: usize, t: T, set: S) -> Result<usize>
         where S: Fn(T, &mut SetIter) -> Result<usize>
     {
-        let pos_idx = self.locate_pos_idx(&mut index)?;
-        set(t, &mut self.set_iter(pos_idx, index))
+        let pos = self.locate_pos(&mut index)?;
+        set(t, &mut self.set_iter(pos, index))
     }
 
     #[inline]
@@ -674,7 +675,7 @@ impl ByteBuf {
     }
 
     pub fn extend(&mut self, mut other: Self) {
-        let pos = other.pos_idx;
+        let pos = other.pos;
         let n = other.blocks.len() - pos;
         let off = self.blocks.len();
         self.blocks.reserve(n);
@@ -690,15 +691,15 @@ impl ByteBuf {
     }
 
     pub fn split_off(&mut self, mut at: usize) -> Result<Self> {
-        let pos_idx = self.locate_pos_idx(&mut at)?;
-        let len = pos_idx + 1;
+        let pos = self.locate_pos(&mut at)?;
+        let len = pos + 1;
         let n = self.blocks.len() - len;
         let mut other_blocks = Vec::new();
-        let mut other_pos_idx = 0;
+        let mut other_pos = 0;
         let other_len;
         let mut dst_ptr;
         {
-            let block = unsafe { self.blocks.get_unchecked_mut(pos_idx) };
+            let block = unsafe { self.blocks.get_unchecked_mut(pos) };
             let other_block = block.split_off(at);
             if !other_block.is_empty() || other_block.appendable() >= 8 {
                 other_len = n + 1;
@@ -708,17 +709,17 @@ impl ByteBuf {
                     ptr::write(dst_ptr, other_block);
                     dst_ptr = dst_ptr.offset(1);
                 }
-                if self.pos_idx > pos_idx {
-                    other_pos_idx = self.pos_idx - pos_idx;
-                    self.pos_idx = pos_idx;
+                if self.pos > pos {
+                    other_pos = self.pos - pos;
+                    self.pos = pos;
                 }
             } else if n > 0 {
                 other_len = n;
                 other_blocks.reserve(other_len);
                 dst_ptr = other_blocks.as_mut_ptr();
-                if self.pos_idx > pos_idx {
-                    other_pos_idx = self.pos_idx - len;
-                    self.pos_idx = pos_idx;
+                if self.pos > pos {
+                    other_pos = self.pos - len;
+                    self.pos = pos;
                 }
             } else {
                 return Ok(Self::with_growth(self.growth));
@@ -733,7 +734,7 @@ impl ByteBuf {
 
         Ok(ByteBuf {
                blocks: other_blocks,
-               pos_idx: other_pos_idx,
+               pos: other_pos,
                growth: self.growth,
            })
     }
@@ -746,16 +747,16 @@ impl ByteBuf {
     }
 
     pub fn as_bytes(&self) -> Option<&[u8]> {
-        let mut pos_idx = self.pos_idx;
+        let mut pos = self.pos;
         let mut idx = None;
-        while pos_idx < self.blocks.len() {
-            if !unsafe { self.blocks.get_unchecked(pos_idx) }.is_empty() {
+        while pos < self.blocks.len() {
+            if !unsafe { self.blocks.get_unchecked(pos) }.is_empty() {
                 if idx.is_some() {
                     return None;
                 }
-                idx = Some(pos_idx);
+                idx = Some(pos);
             }
-            pos_idx += 1;
+            pos += 1;
         }
 
         match idx {
@@ -765,8 +766,8 @@ impl ByteBuf {
     }
 
     #[inline]
-    fn starts_with_internal(&self, mut needle: &[u8], pos_idx: usize) -> bool {
-        for block in &self.blocks[pos_idx..] {
+    fn starts_with_internal(&self, mut needle: &[u8], pos: usize) -> bool {
+        for block in &self.blocks[pos..] {
             if block.len() < needle.len() {
                 let (l, r) = needle.split_at(block.len());
                 needle = r;
@@ -784,14 +785,14 @@ impl ByteBuf {
         if needle.is_empty() {
             return true;
         }
-        self.starts_with_internal(needle, self.pos_idx)
+        self.starts_with_internal(needle, self.pos)
     }
 
     pub fn ends_with(&self, mut needle: &[u8]) -> bool {
         if needle.is_empty() {
             return true;
         }
-        for block in (&self.blocks[self.pos_idx..]).iter().rev() {
+        for block in (&self.blocks[self.pos..]).iter().rev() {
             if block.len() < needle.len() {
                 let (l, r) = needle.split_at(needle.len() - block.len());
                 needle = l;
@@ -805,70 +806,35 @@ impl ByteBuf {
         false
     }
 
-    pub fn find(&self, needle: &[u8], mut from: usize) -> Option<usize> {
-        let mut off = from;
-        let mut pos_idx = match self.locate_pos_idx(&mut off) {
-            Ok(i) => i,
-            Err(..) => return None,
-        };
-        if needle.is_empty() {
-            return Some(from);
-        }
-        let mut bytes = unsafe { self.blocks.get_unchecked(pos_idx) }.as_bytes_from(off);
-        loop {
-            if bytes.len() >= needle.len() {
-                bytes = match bytes.windows(needle.len()).position(|w| w == needle) {
-                    Some(n) => return Some(from + n),
-                    None => {
-                        let n = bytes.len() - needle.len() + 1;
-                        from += n;
-                        &bytes[n..]
-                    }
-                };
-            }
-            pos_idx += 1;
-            for m in 0..bytes.len() {
-                let (left, right) = needle.split_at(bytes.len() - m);
-                if &bytes[m..] == left {
-                    if self.starts_with_internal(right, pos_idx) {
-                        return Some(from + m);
-                    }
-                }
-            }
-            if pos_idx >= self.blocks.len() {
-                break;
-            }
-            from += bytes.len();
-            bytes = unsafe { self.blocks.get_unchecked(pos_idx) }.as_bytes();
-        }
-        None
+    pub fn windows(&self, size: usize) -> Windows {
+        windows::new(self, size)
     }
 
     pub fn compact(&mut self) {
-        while self.pos_idx < self.blocks.len() &&
-              unsafe { self.blocks.get_unchecked(self.pos_idx) }.is_empty() {
-            self.pos_idx += 1;
+        while self.pos < self.blocks.len() &&
+              unsafe { self.blocks.get_unchecked(self.pos) }.is_empty() {
+            self.pos += 1;
         }
-        if self.pos_idx > 0 {
-            let other_len = self.blocks.len() - self.pos_idx;
+        if self.pos > 0 {
+            let other_len = self.blocks.len() - self.pos;
             let mut other_blocks = Vec::new();
             other_blocks.reserve(other_len);
 
             unsafe {
-                ptr::copy_nonoverlapping(self.blocks.as_ptr().offset(self.pos_idx as isize),
+                ptr::copy_nonoverlapping(self.blocks.as_ptr().offset(self.pos as isize),
                                          other_blocks.as_mut_ptr(),
                                          other_len);
-                self.blocks.set_len(self.pos_idx);
+                self.blocks.set_len(self.pos);
                 other_blocks.set_len(other_len);
             }
             self.blocks = other_blocks;
-            self.pos_idx = 0;
+            self.pos = 0;
         }
     }
 
     pub fn skip(&mut self, n: usize) -> usize {
         let mut skipped = 0;
-        let i = self.pos_idx;
+        let i = self.pos;
         for block in &mut self.blocks[i..] {
             let m = block.len();
             skipped += m;
@@ -879,14 +845,14 @@ impl ByteBuf {
             } else {
                 let write_pos = block.write_pos();
                 block.set_read_pos(write_pos);
-                self.pos_idx += 1;
+                self.pos += 1;
             }
         }
         skipped
     }
 
     pub fn is_empty(&self) -> bool {
-        for block in &self.blocks[self.pos_idx..] {
+        for block in &self.blocks[self.pos..] {
             if !block.is_empty() {
                 return false;
             }
@@ -931,9 +897,9 @@ impl ByteBuf {
     pub fn write_out<W>(&mut self, mut w: W) -> Result<usize>
         where W: Write + WriteV
     {
-        let n = self.blocks.len() - self.pos_idx;
+        let n = self.blocks.len() - self.pos;
         if n == 1 {
-            let block = unsafe { self.blocks.get_unchecked_mut(self.pos_idx) };
+            let block = unsafe { self.blocks.get_unchecked_mut(self.pos) };
             if block.len() < 1 {
                 return Ok(0);
             }
@@ -944,7 +910,7 @@ impl ByteBuf {
             Ok(written)
         } else if n > 1 {
             let mut iovs = Vec::with_capacity(n);
-            for block in &self.blocks[self.pos_idx..] {
+            for block in &self.blocks[self.pos..] {
                 if block.len() > 0 {
                     let off = block.read_pos();
                     iovs.push(IoVec::from(unsafe { &*block.ptr_at(off) }, block.len()));
@@ -979,13 +945,13 @@ impl ByteBuf {
     }
 
     #[inline]
-    fn pos_idx(&self) -> usize {
-        self.pos_idx
+    fn pos(&self) -> usize {
+        self.pos
     }
 
     #[inline]
-    fn inc_pos_idx(&mut self) {
-        self.pos_idx += 1;
+    fn inc_pos(&mut self) {
+        self.pos += 1;
     }
 
     #[inline]
@@ -1004,19 +970,19 @@ impl ByteBuf {
     }
 
     #[inline]
-    fn get_iter(&self, pos_idx: usize, index: usize) -> GetIter {
+    fn get_iter(&self, pos: usize, index: usize) -> GetIter {
         GetIter {
-            blocks: &self.blocks[pos_idx..],
-            pos_idx: 0,
+            blocks: &self.blocks[pos..],
+            pos: 0,
             init_index: index,
         }
     }
 
     #[inline]
-    fn set_iter(&mut self, pos_idx: usize, index: usize) -> SetIter {
+    fn set_iter(&mut self, pos: usize, index: usize) -> SetIter {
         SetIter {
-            blocks: &mut self.blocks[pos_idx..],
-            pos_idx: 0,
+            blocks: &mut self.blocks[pos..],
+            pos: 0,
             init_index: index,
         }
     }
@@ -1031,8 +997,8 @@ impl ByteBuf {
         Prepender { inner: self }
     }
 
-    fn locate_pos_idx(&self, index: &mut usize) -> Result<usize> {
-        for i in self.pos_idx..self.blocks.len() {
+    fn locate_pos(&self, index: &mut usize) -> Result<usize> {
+        for i in self.pos..self.blocks.len() {
             let block_len = unsafe { self.blocks.get_unchecked(i) }.len();
             if *index <= block_len {
                 return Ok(i);
@@ -1159,7 +1125,7 @@ pub struct Bytes<'a> {
 
 impl<'a> Bytes<'a> {
     fn new(buf: &'a ByteBuf) -> Self {
-        let mut iter_inner = (&buf.blocks[buf.pos_idx..]).iter();
+        let mut iter_inner = (&buf.blocks[buf.pos..]).iter();
         let iter_u8 = match iter_inner.next() {
             Some(inner) => {
                 let ptr = inner.ptr_at(inner.read_pos());
@@ -1203,13 +1169,13 @@ impl<'a> Iterator for Reader<'a> {
     type Item = ReadBlock<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.inner.pos_idx() < self.inner.num_of_blocks() {
-            let i = self.inner.pos_idx();
+        while self.inner.pos() < self.inner.num_of_blocks() {
+            let i = self.inner.pos();
             let block = unsafe { &mut *self.inner.mut_ptr_at(i) };
             if !block.is_empty() {
                 return Some(ReadBlock::new(block));
             }
-            self.inner.inc_pos_idx();
+            self.inner.inc_pos();
         }
         None
     }
