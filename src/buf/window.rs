@@ -1,7 +1,6 @@
-use std::iter::{Iterator, DoubleEndedIterator, ExactSizeIterator};
 use std::ptr;
 
-use super::{ByteBuf, Inner};
+use super::{ByteBuf, Block};
 
 enum Off {
     Left(usize),
@@ -9,7 +8,7 @@ enum Off {
 }
 
 pub struct Window<'a> {
-    blocks: &'a [Inner],
+    blocks: &'a [Block],
     off: Off,
     size: usize,
 }
@@ -40,7 +39,7 @@ impl<'a> Window<'a> {
         }
     }
 
-    fn to_bytes_left(blocks: &'a [Inner], mut off: usize, mut size: usize) -> Vec<u8> {
+    fn to_bytes_left(blocks: &'a [Block], mut off: usize, mut size: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(size);
         unsafe { bytes.set_len(size) }
         let mut p_dst = bytes.as_mut_ptr();
@@ -65,7 +64,7 @@ impl<'a> Window<'a> {
         bytes
     }
 
-    fn to_bytes_right(blocks: &'a [Inner], mut off: usize, mut size: usize) -> Vec<u8> {
+    fn to_bytes_right(blocks: &'a [Block], mut off: usize, mut size: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(size);
         unsafe { bytes.set_len(size) }
         let mut p_dst = unsafe { bytes.as_mut_ptr().offset(size as isize) };
@@ -93,7 +92,7 @@ impl<'a> Window<'a> {
     }
 
     #[inline]
-    fn from_left(blocks: &'a [Inner], off: usize, size: usize) -> Self {
+    fn from_left(blocks: &'a [Block], off: usize, size: usize) -> Self {
         Window {
             blocks,
             off: Off::Left(off),
@@ -102,7 +101,7 @@ impl<'a> Window<'a> {
     }
 
     #[inline]
-    fn from_right(blocks: &'a [Inner], off: usize, size: usize) -> Self {
+    fn from_right(blocks: &'a [Block], off: usize, size: usize) -> Self {
         Window {
             blocks,
             off: Off::Right(off),
@@ -172,15 +171,15 @@ impl<'a> PartialEq<Window<'a>> for &'a [u8] {
 }
 
 pub struct Windows<'a> {
-    blocks: &'a [Inner],
+    blocks: &'a [Block],
     off: usize,
     roff: usize,
     len: usize,
     size: usize, // window size
 }
 
-pub fn new<'a>(buf: &'a ByteBuf, size: usize) -> Windows<'a> {
-    let blocks: &[Inner] = &buf.blocks[buf.idx..];
+pub fn windows<'a>(buf: &'a ByteBuf, size: usize) -> Windows<'a> {
+    let blocks: &[Block] = &buf.blocks[buf.idx..];
     let mut len = blocks.iter().fold(0, |n, b| n + b.len());
     len = if len >= size { len - size + 1 } else { 0 };
     Windows {

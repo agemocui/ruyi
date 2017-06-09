@@ -1,560 +1,53 @@
 pub mod codec;
 
-mod windows;
-pub use self::windows::{Window, Windows};
+mod block;
+use self::block::Block;
+
+mod read;
+pub use self::read::{ReadBlock, ReadIter};
+
+mod get;
+pub use self::get::{GetBlock, GetIter};
+
+mod set;
+pub use self::set::{SetBlock, SetIter};
+
+mod append;
+pub use self::append::{AppendBlock, Appender};
+
+mod prepend;
+pub use self::prepend::{PrependBlock, Prepender};
+
+mod bytes;
+pub use self::bytes::Bytes;
+
+mod window;
+pub use self::window::{Window, Windows};
+
+mod hex_dump;
+pub use self::hex_dump::HexDump;
+
+mod reader;
+pub use self::reader::Reader;
+
+mod writer;
+pub use self::writer::Writer;
 
 use std::cmp::Ordering;
-use std::fmt;
 use std::mem;
 use std::io::{Result, Read, Write, Error, ErrorKind};
-use std::iter::Iterator;
-use std::option::Option;
 use std::ptr;
-use std::rc::Rc;
-use std::slice::{self, Iter};
-use std::str;
+use std::slice;
 
 use nio::{IoVec, ReadV, WriteV};
 
 const EMPTY: &[u8] = &[];
 
 #[derive(Debug)]
-struct Alloc {
-    ptr: *mut u8,
-    cap: usize,
-}
-
-fn alloc(len: usize) -> Alloc {
-    const MASK: usize = word_len!() - 1;
-    let n = len + MASK;
-    // align = mem::size_of::<usize>()
-    let mut buf = Vec::<usize>::with_capacity(n / word_len!());
-    let ptr = buf.as_mut_ptr() as *mut u8;
-    mem::forget(buf);
-    Alloc {
-        ptr: ptr,
-        cap: n & !MASK,
-    }
-}
-
-impl Drop for Alloc {
-    fn drop(&mut self) {
-        drop(unsafe { Vec::from_raw_parts(self.ptr, 0, self.cap) });
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Inner {
-    ptr: *mut u8,
-    cap: usize,
-    read_pos: usize,
-    write_pos: usize,
-    shared: Rc<Alloc>,
-}
-
-impl Inner {
-    #[inline]
-    fn with_capacity(capacity: usize) -> Self {
-        let alloc = alloc(capacity);
-        Inner {
-            ptr: alloc.ptr,
-            cap: alloc.cap,
-            read_pos: 0,
-            write_pos: 0,
-            shared: Rc::new(alloc),
-        }
-    }
-
-    #[inline]
-    fn for_prependable(capacity: usize) -> Self {
-        let alloc = alloc(capacity);
-        Inner {
-            ptr: alloc.ptr,
-            cap: alloc.cap,
-            read_pos: alloc.cap,
-            write_pos: alloc.cap,
-            shared: Rc::new(alloc),
-        }
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.read_pos == self.write_pos
-    }
-
-    #[inline]
-    fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.ptr
-    }
-
-    #[inline]
-    fn mut_ptr_at(&mut self, off: usize) -> *mut u8 {
-        unsafe { self.ptr.offset(off as isize) }
-    }
-
-    #[inline]
-    fn ptr_at(&self, off: usize) -> *const u8 {
-        unsafe { self.ptr.offset(off as isize) }
-    }
-
-    #[inline]
-    fn as_ptr(&self) -> *const u8 {
-        self.ptr
-    }
-
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.cap
-    }
-
-    #[inline]
-    fn set_capacity(&mut self, capacity: usize) {
-        debug_assert!(capacity >= self.write_pos,
-                      "`capacity` out of bounds: capacity={}, write_pos={}",
-                      capacity,
-                      self.write_pos);
-        self.cap = capacity;
-    }
-
-    #[inline]
-    fn read_pos(&self) -> usize {
-        self.read_pos
-    }
-
-    #[inline]
-    fn set_read_pos(&mut self, read_pos: usize) {
-        debug_assert!(read_pos <= self.write_pos,
-                      "`read_pos` out of bounds: read_pos={}, write_pos={}",
-                      read_pos,
-                      self.write_pos);
-        self.read_pos = read_pos;
-    }
-
-    #[inline]
-    fn write_pos(&self) -> usize {
-        self.write_pos
-    }
-
-    #[inline]
-    fn set_write_pos(&mut self, write_pos: usize) {
-        debug_assert!(write_pos >= self.read_pos && write_pos <= self.cap,
-                      "`write_pos` out of bounds: read_pos={}, write_pos={}, capacity={}",
-                      self.read_pos,
-                      write_pos,
-                      self.cap);
-        self.write_pos = write_pos;
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.write_pos() - self.read_pos()
-    }
-
-    #[inline]
-    fn appendable(&self) -> usize {
-        self.capacity() - self.write_pos()
-    }
-
-    #[inline]
-    fn prependable(&self) -> usize {
-        self.read_pos()
-    }
-
-    #[inline]
-    fn as_bytes(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), self.len()) }
-    }
-
-    #[inline]
-    fn as_bytes_from(&self, from: usize) -> &[u8] {
-        let i = self.read_pos() + from;
-        let len = self.write_pos() - i;
-        unsafe { slice::from_raw_parts(self.ptr_at(i), len) }
-    }
-
-    #[inline]
-    fn as_bytes_to(&self, to: usize) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), to) }
-    }
-
-    #[inline]
-    fn as_bytes_range(&self, from: usize, len: usize) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.ptr_at(from), len) }
-    }
-
-    #[inline]
-    fn split_off(&mut self, at: usize) -> Self {
-        let off = self.read_pos() + at;
-
-        debug_assert!(off <= self.write_pos(),
-                      "`at` out of bounds: read_pos={}, at={}, write_pos={}",
-                      self.read_pos,
-                      at,
-                      self.write_pos);
-
-        let other_ptr = unsafe { self.ptr.offset(off as isize) };
-
-        let other_write_pos = self.write_pos() - off;
-        self.set_write_pos(off);
-
-        let other_cap = self.cap - off;
-        self.set_capacity(off);
-
-        Inner {
-            ptr: other_ptr,
-            cap: other_cap,
-            read_pos: 0,
-            write_pos: other_write_pos,
-            shared: self.shared.clone(),
-        }
-    }
-
-    #[inline]
-    fn starts_with(&self, needle: &[u8]) -> bool {
-        self.as_bytes().starts_with(needle)
-    }
-
-    #[inline]
-    fn ends_with(&self, needle: &[u8]) -> bool {
-        self.as_bytes().ends_with(needle)
-    }
-}
-
-#[derive(Debug)]
 pub struct ByteBuf {
-    blocks: Vec<Inner>,
+    blocks: Vec<Block>,
     idx: usize,
     growth: usize,
-}
-
-pub struct ReadBlock<'a> {
-    inner: &'a mut Inner,
-}
-
-impl<'a> ReadBlock<'a> {
-    #[inline]
-    fn new(inner: &'a mut Inner) -> Self {
-        ReadBlock { inner: inner }
-    }
-
-    #[inline]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.inner.as_ptr()
-    }
-
-    #[inline]
-    pub fn read_pos(&self) -> usize {
-        self.inner.read_pos()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[inline]
-    pub fn write_pos(&self) -> usize {
-        self.inner.write_pos()
-    }
-
-    #[inline]
-    pub fn set_read_pos(&mut self, read_pos: usize) {
-        self.inner.set_read_pos(read_pos)
-    }
-}
-
-pub struct ReadIter<'a> {
-    inner: &'a mut ByteBuf,
-}
-
-impl<'a> ReadIter<'a> {
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-}
-
-impl<'a> Iterator for ReadIter<'a> {
-    type Item = ReadBlock<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.inner.pos() < self.inner.num_of_blocks() {
-            let i = self.inner.pos();
-            let inner = unsafe { &mut *self.inner.mut_ptr_at(i) };
-            if !inner.is_empty() {
-                return Some(ReadBlock::new(inner));
-            }
-            self.inner.inc_pos();
-        }
-        None
-    }
-}
-
-pub struct GetBlock<'a> {
-    inner: &'a Inner,
-    get_pos: usize,
-}
-
-impl<'a> GetBlock<'a> {
-    #[inline]
-    fn new(inner: &'a Inner) -> Self {
-        GetBlock {
-            inner: inner,
-            get_pos: inner.read_pos(),
-        }
-    }
-
-    #[inline]
-    fn with_index(inner: &'a Inner, index: usize) -> Self {
-        GetBlock {
-            inner: inner,
-            get_pos: inner.read_pos() + index,
-        }
-    }
-
-    #[inline]
-    pub fn read_pos(&self) -> usize {
-        self.get_pos
-    }
-
-    #[inline]
-    pub fn write_pos(&self) -> usize {
-        self.inner.write_pos()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.write_pos() - self.read_pos()
-    }
-
-    #[inline]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.inner.as_ptr()
-    }
-}
-
-pub struct GetIter<'a> {
-    blocks: &'a [Inner],
-    pos: usize,
-    // offset of the first u8 in the first block
-    init_index: usize,
-}
-
-impl<'a> GetIter<'a> {
-    pub fn len(&self) -> usize {
-        let init_val = unsafe { self.blocks.get_unchecked(self.pos).len() - self.init_index };
-        self.blocks[self.pos + 1..]
-            .iter()
-            .fold(0, |remaining, b| remaining + b.len()) + init_val
-    }
-}
-
-impl<'a> Iterator for GetIter<'a> {
-    type Item = GetBlock<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.pos < self.blocks.len() {
-            let inner = unsafe { self.blocks.get_unchecked(self.pos) };
-            self.pos += 1;
-            if self.init_index > 0 {
-                let index = self.init_index;
-                self.init_index = 0;
-                if inner.len() > index {
-                    return Some(GetBlock::with_index(inner, index));
-                }
-            } else if !inner.is_empty() {
-                return Some(GetBlock::new(inner));
-            }
-        }
-        None
-    }
-}
-
-pub struct SetBlock<'a> {
-    inner: &'a mut Inner,
-    set_pos: usize,
-}
-
-impl<'a> SetBlock<'a> {
-    #[inline]
-    fn new(inner: &'a mut Inner) -> Self {
-        let set_pos = inner.read_pos();
-        SetBlock {
-            inner: inner,
-            set_pos: set_pos,
-        }
-    }
-
-    #[inline]
-    fn with_index(inner: &'a mut Inner, index: usize) -> Self {
-        let set_pos = inner.read_pos() + index;
-        SetBlock {
-            inner: inner,
-            set_pos: set_pos,
-        }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.write_pos() - self.read_pos()
-    }
-
-    #[inline]
-    pub fn read_pos(&self) -> usize {
-        self.set_pos
-    }
-
-    #[inline]
-    pub fn write_pos(&self) -> usize {
-        self.inner.write_pos()
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.inner.as_mut_ptr()
-    }
-}
-
-pub struct SetIter<'a> {
-    blocks: &'a mut [Inner],
-    pos: usize,
-    // offset of the first u8 in the first block
-    init_index: usize,
-}
-
-impl<'a> Iterator for SetIter<'a> {
-    type Item = SetBlock<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.pos < self.blocks.len() {
-            let inner = unsafe { &mut *self.blocks.as_mut_ptr().offset(self.pos as isize) };
-            self.pos += 1;
-            if self.init_index > 0 {
-                let index = self.init_index;
-                self.init_index = 0;
-                if inner.len() > index {
-                    return Some(SetBlock::with_index(inner, index));
-                }
-            } else if !inner.is_empty() {
-                return Some(SetBlock::new(inner));
-            }
-        }
-        None
-    }
-}
-
-pub struct AppendBlock<'a> {
-    inner: &'a mut Inner,
-}
-
-impl<'a> AppendBlock<'a> {
-    #[inline]
-    fn new(inner: &'a mut Inner) -> Self {
-        AppendBlock { inner: inner }
-    }
-
-    #[inline]
-    pub fn write_pos(&self) -> usize {
-        self.inner.write_pos()
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.inner.as_mut_ptr()
-    }
-
-    #[inline]
-    pub fn appendable(&self) -> usize {
-        self.inner.appendable()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[inline]
-    pub fn set_write_pos(&mut self, write_pos: usize) {
-        self.inner.set_write_pos(write_pos)
-    }
-
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        self.inner.capacity()
-    }
-}
-
-pub struct Appender<'a> {
-    inner: &'a mut ByteBuf,
-}
-
-impl<'a> Appender<'a> {
-    #[inline]
-    pub fn last_mut(&mut self) -> Option<AppendBlock> {
-        match self.inner.last_mut() {
-            Some(block) => Some(AppendBlock::new(block)),
-            None => None,
-        }
-    }
-
-    pub fn append(&mut self, min_capacity: usize) {
-        self.inner.append_block(min_capacity)
-    }
-}
-
-pub struct PrependBlock<'a> {
-    inner: &'a mut Inner,
-}
-
-impl<'a> PrependBlock<'a> {
-    #[inline]
-    fn new(inner: &'a mut Inner) -> Self {
-        PrependBlock { inner: inner }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[inline]
-    pub fn prependable(&self) -> usize {
-        self.inner.prependable()
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.inner.as_mut_ptr()
-    }
-
-    #[inline]
-    pub fn read_pos(&self) -> usize {
-        self.inner.read_pos()
-    }
-
-    #[inline]
-    pub fn set_read_pos(&mut self, read_pos: usize) {
-        self.inner.set_read_pos(read_pos)
-    }
-}
-
-pub struct Prepender<'a> {
-    inner: &'a mut ByteBuf,
-}
-
-impl<'a> Prepender<'a> {
-    #[inline]
-    pub fn first_mut(&mut self) -> Option<PrependBlock> {
-        match self.inner.first_mut() {
-            Some(block) => Some(PrependBlock::new(block)),
-            None => None,
-        }
-    }
-
-    #[inline]
-    pub fn prepend(&mut self, min_capacity: usize) {
-        self.inner.prepend_block(min_capacity)
-    }
 }
 
 impl ByteBuf {
@@ -566,7 +59,7 @@ impl ByteBuf {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         let cap = if capacity == 0 { 8 * 1024 } else { capacity };
-        let inner = Inner::with_capacity(cap);
+        let inner = Block::with_capacity(cap);
         let growth = inner.capacity();
         ByteBuf {
             blocks: vec![inner],
@@ -824,7 +317,7 @@ impl ByteBuf {
     }
 
     pub fn windows(&self, size: usize) -> Windows {
-        windows::new(self, size)
+        window::windows(self, size)
     }
 
     pub fn find_from(&self, needle: &[u8], mut pos: usize) -> Option<usize> {
@@ -1037,22 +530,22 @@ impl ByteBuf {
 
     #[inline]
     pub fn as_reader(&mut self) -> Reader {
-        Reader { inner: self }
+        reader::new(self)
     }
 
     #[inline]
     pub fn as_writer(&mut self) -> Writer {
-        Writer { inner: self }
+        writer::new(self)
     }
 
     #[inline]
     pub fn as_hex_dump(&self) -> HexDump {
-        HexDump { inner: self }
+        hex_dump::new(self)
     }
 
     #[inline]
     pub fn bytes(&self) -> Bytes {
-        Bytes::new(self)
+        bytes::new(self)
     }
 
     #[inline]
@@ -1071,41 +564,33 @@ impl ByteBuf {
     }
 
     #[inline]
-    unsafe fn mut_ptr_at(&mut self, index: usize) -> *mut Inner {
+    unsafe fn mut_ptr_at(&mut self, index: usize) -> *mut Block {
         self.blocks.as_mut_ptr().offset(index as isize)
     }
 
     #[inline]
     fn read_iter(&mut self) -> ReadIter {
-        ReadIter { inner: self }
+        read::iter(self)
     }
 
     #[inline]
-    fn get_iter(&self, pos: usize, index: usize) -> GetIter {
-        GetIter {
-            blocks: &self.blocks[pos..],
-            pos: 0,
-            init_index: index,
-        }
+    fn get_iter(&self, idx: usize, pos: usize) -> GetIter {
+        get::iter(&self.blocks[idx..], pos)
     }
 
     #[inline]
-    fn set_iter(&mut self, pos: usize, index: usize) -> SetIter {
-        SetIter {
-            blocks: &mut self.blocks[pos..],
-            pos: 0,
-            init_index: index,
-        }
+    fn set_iter(&mut self, idx: usize, pos: usize) -> SetIter {
+        set::iter(&mut self.blocks[idx..], pos)
     }
 
     #[inline]
     fn appender(&mut self) -> Appender {
-        Appender { inner: self }
+        append::appender(self)
     }
 
     #[inline]
     fn prepender(&mut self) -> Prepender {
-        Prepender { inner: self }
+        prepend::prepender(self)
     }
 
     fn locate_idx(&self, pos: &mut usize) -> Result<usize> {
@@ -1121,17 +606,17 @@ impl ByteBuf {
     }
 
     #[inline]
-    fn last(&self) -> Option<&Inner> {
+    fn last(&self) -> Option<&Block> {
         self.blocks.last()
     }
 
     #[inline]
-    fn last_mut(&mut self) -> Option<&mut Inner> {
+    fn last_mut(&mut self) -> Option<&mut Block> {
         self.blocks.last_mut()
     }
 
     #[inline]
-    fn first_mut(&mut self) -> Option<&mut Inner> {
+    fn first_mut(&mut self) -> Option<&mut Block> {
         self.blocks.first_mut()
     }
 
@@ -1142,7 +627,7 @@ impl ByteBuf {
         } else {
             min_capacity
         };
-        self.blocks.push(Inner::with_capacity(cap));
+        self.blocks.push(Block::with_capacity(cap));
     }
 
     #[inline]
@@ -1152,7 +637,7 @@ impl ByteBuf {
         } else {
             min_capacity
         };
-        self.blocks.insert(0, Inner::for_prependable(cap));
+        self.blocks.insert(0, Block::for_prependable(cap));
     }
 }
 
@@ -1229,178 +714,3 @@ impl PartialEq for ByteBuf {
 }
 
 impl Eq for ByteBuf {}
-
-pub struct Bytes<'a> {
-    iter_inner: Iter<'a, Inner>,
-    iter_u8: Option<Iter<'a, u8>>,
-}
-
-impl<'a> Bytes<'a> {
-    fn new(buf: &'a ByteBuf) -> Self {
-        let mut iter_inner = (&buf.blocks[buf.idx..]).iter();
-        let iter_u8 = match iter_inner.next() {
-            Some(inner) => {
-                let ptr = inner.ptr_at(inner.read_pos());
-                Some(unsafe { slice::from_raw_parts(ptr, inner.len()) }.iter())
-            }
-            None => None,
-        };
-        Bytes {
-            iter_inner,
-            iter_u8,
-        }
-    }
-}
-
-impl<'a> Iterator for Bytes<'a> {
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.iter_u8.as_mut() {
-                Some(iter_u8) => {
-                    if let Some(b) = iter_u8.next() {
-                        return Some(*b);
-                    }
-                }
-                None => return None,
-            }
-            self.iter_u8 = match self.iter_inner.next() {
-                Some(inner) => Some(inner.as_bytes().iter()),
-                None => None,
-            };
-        }
-    }
-}
-
-pub struct Reader<'a> {
-    inner: &'a mut ByteBuf,
-}
-
-impl<'a> Iterator for Reader<'a> {
-    type Item = ReadBlock<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.inner.pos() < self.inner.num_of_blocks() {
-            let i = self.inner.pos();
-            let block = unsafe { &mut *self.inner.mut_ptr_at(i) };
-            if !block.is_empty() {
-                return Some(ReadBlock::new(block));
-            }
-            self.inner.inc_pos();
-        }
-        None
-    }
-}
-
-impl<'a> Read for Reader<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let mut n = buf.len();
-        let mut dst_ptr = buf.as_mut_ptr();
-        for mut block in self {
-            let len = block.len();
-            let src_off = block.read_pos();
-            if len >= n {
-                unsafe {
-                    ptr::copy_nonoverlapping(block.as_ptr().offset(src_off as isize), dst_ptr, n);
-                }
-                block.set_read_pos(src_off + n);
-                return Ok(buf.len());
-            } else {
-                unsafe {
-                    ptr::copy_nonoverlapping(block.as_ptr().offset(src_off as isize), dst_ptr, len);
-                    dst_ptr = dst_ptr.offset(len as isize);
-                }
-                n -= len;
-                let write_pos = block.write_pos();
-                block.set_read_pos(write_pos);
-            }
-        }
-        Ok(buf.len() - n)
-    }
-}
-
-pub struct Writer<'a> {
-    inner: &'a mut ByteBuf,
-}
-
-impl<'a> Write for Writer<'a> {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        let mut n = buf.len();
-        let mut src_dst = buf.as_ptr();
-        loop {
-            if let Some(block) = self.inner.last_mut() {
-                let dst_off = block.write_pos();
-                let appendable = block.appendable();
-                if appendable >= n {
-                    unsafe {
-                        ptr::copy_nonoverlapping(src_dst,
-                                                 block.as_mut_ptr().offset(dst_off as isize),
-                                                 n);
-                    }
-                    block.set_write_pos(dst_off + n);
-                    return Ok(buf.len());
-                } else {
-                    unsafe {
-                        ptr::copy_nonoverlapping(src_dst,
-                                                 block.as_mut_ptr().offset(dst_off as isize),
-                                                 appendable);
-                        src_dst = src_dst.offset(appendable as isize);
-                    }
-                    n -= appendable;
-                    let cap = block.capacity();
-                    block.set_write_pos(cap);
-                }
-            }
-            self.inner.append_block(0);
-        }
-    }
-
-    #[inline]
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-pub struct HexDump<'a> {
-    inner: &'a ByteBuf,
-}
-
-impl<'a> fmt::Display for HexDump<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut bytes = self.inner.bytes();
-        let mut next = bytes.next();
-        if next.is_none() {
-            return Ok(());
-        }
-
-        const BYTES_PER_ROW: usize = 16;
-
-        let mut addr = 0;
-        let mut asc: [u8; BYTES_PER_ROW] = unsafe { mem::uninitialized() };
-        loop {
-            write!(f, "{:08X}h:", addr)?;
-            // dump one row
-            let mut i = 0;
-            while i < BYTES_PER_ROW {
-                match next {
-                    Some(b) => {
-                        write!(f, " {:02X}", b)?;
-                        asc[i] = if (b as char).is_control() { b'.' } else { b };
-                        i += 1;
-                        next = bytes.next();
-                    }
-                    None => {
-                        for _ in i..BYTES_PER_ROW {
-                            write!(f, "   ")?;
-                        }
-                        writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
-                        return Ok(());
-                    }
-                }
-            }
-            writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
-            addr += BYTES_PER_ROW;
-        }
-    }
-}
