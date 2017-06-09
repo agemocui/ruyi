@@ -304,6 +304,57 @@ fn ends_with() {
 }
 
 #[test]
+fn find_from_rfind_from() {
+    let mut v = Vec::with_capacity(100);
+    for i in 0..100 {
+        v.push(i);
+    }
+    let mut buf = ByteBuf::with_growth(1);
+    buf.append(&v[..], u8s::append).unwrap();
+    buf.skip(13);
+    let bytes = &v[13..];
+
+    let mut needle = &bytes[30..57];
+    assert_eq!(buf.find_from(needle, 0), Some(30));
+    assert_eq!(buf.find_from(needle, 23), Some(30));
+    assert_eq!(buf.find_from(needle, 30), Some(30));
+    assert_eq!(buf.find_from(needle, 33), None);
+    assert_eq!(buf.find_from(needle, 61), None);
+
+    assert_eq!(buf.rfind_from(needle, 0), None);
+    assert_eq!(buf.rfind_from(needle, 23), None);
+    assert_eq!(buf.rfind_from(needle, 30), Some(30));
+    assert_eq!(buf.rfind_from(needle, 33), Some(30));
+    assert_eq!(buf.rfind_from(needle, 61), Some(30));
+
+    needle = &bytes[11..12];
+    assert_eq!(buf.find_from(needle, 0), Some(11));
+    assert_eq!(buf.find_from(needle, 9), Some(11));
+    assert_eq!(buf.find_from(needle, 11), Some(11));
+    assert_eq!(buf.find_from(needle, 12), None);
+    assert_eq!(buf.find_from(needle, 13), None);
+
+    assert_eq!(buf.rfind_from(needle, 0), None);
+    assert_eq!(buf.rfind_from(needle, 9), None);
+    assert_eq!(buf.rfind_from(needle, 11), Some(11));
+    assert_eq!(buf.rfind_from(needle, 12), Some(11));
+    assert_eq!(buf.rfind_from(needle, 13), Some(11));
+
+    needle = &bytes[25..28];
+    assert_eq!(buf.find_from(needle, 0), Some(25));
+    assert_eq!(buf.find_from(needle, 11), Some(25));
+    assert_eq!(buf.find_from(needle, 25), Some(25));
+    assert_eq!(buf.find_from(needle, 27), None);
+    assert_eq!(buf.find_from(needle, 29), None);
+
+    assert_eq!(buf.rfind_from(needle, 0), None);
+    assert_eq!(buf.rfind_from(needle, 11), None);
+    assert_eq!(buf.rfind_from(needle, 25), Some(25));
+    assert_eq!(buf.rfind_from(needle, 27), Some(25));
+    assert_eq!(buf.rfind_from(needle, 29), Some(25));
+}
+
+#[test]
 fn windows() {
     let mut v = Vec::with_capacity(100);
     for i in 0..100 {
@@ -326,6 +377,25 @@ fn windows() {
     assert_eq!(buf.windows(needle.len()).skip(61).position(|w| w == needle),
                None);
 
+    assert_eq!(buf.windows(needle.len()).rposition(|w| w == needle),
+               Some(30));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(23)
+                   .rposition(|w| needle == w),
+               Some(30 - 23));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(30)
+                   .rposition(|w| w == needle),
+               Some(30 - 30));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(33)
+                   .rposition(|w| w == needle),
+               None);
+    assert_eq!(buf.windows(needle.len())
+                   .skip(61)
+                   .rposition(|w| w == needle),
+               None);
+
     needle = &bytes[11..12];
     assert_eq!(buf.windows(needle.len()).position(|w| w == needle),
                Some(11));
@@ -338,6 +408,23 @@ fn windows() {
     assert_eq!(buf.windows(needle.len()).skip(13).position(|w| w == needle),
                None);
 
+    assert_eq!(buf.windows(needle.len()).rposition(|w| w == needle),
+               Some(11));
+    assert_eq!(buf.windows(needle.len()).skip(9).rposition(|w| w == needle),
+               Some(11 - 9));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(11)
+                   .rposition(|w| w == needle),
+               Some(11 - 11));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(12)
+                   .rposition(|w| w == needle),
+               None);
+    assert_eq!(buf.windows(needle.len())
+                   .skip(13)
+                   .rposition(|w| w == needle),
+               None);
+
     needle = &bytes[25..28];
     assert_eq!(buf.windows(needle.len()).position(|w| needle == w),
                Some(25));
@@ -348,5 +435,24 @@ fn windows() {
     assert_eq!(buf.windows(needle.len()).skip(27).position(|w| w == needle),
                None);
     assert_eq!(buf.windows(needle.len()).skip(29).position(|w| needle == w),
+               None);
+
+    assert_eq!(buf.windows(needle.len()).rposition(|w| needle == w),
+               Some(25));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(21)
+                   .rposition(|w| w == needle),
+               Some(25 - 21));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(25)
+                   .rposition(|w| w == needle),
+               Some(25 - 25));
+    assert_eq!(buf.windows(needle.len())
+                   .skip(27)
+                   .rposition(|w| w == needle),
+               None);
+    assert_eq!(buf.windows(needle.len())
+                   .skip(29)
+                   .rposition(|w| needle == w),
                None);
 }

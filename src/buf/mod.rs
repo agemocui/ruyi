@@ -166,7 +166,19 @@ impl Inner {
     }
 
     #[inline]
-    fn get_bytes(&self, from: usize, len: usize) -> &[u8] {
+    fn as_bytes_from(&self, from: usize) -> &[u8] {
+        let i = self.read_pos() + from;
+        let len = self.write_pos() - i;
+        unsafe { slice::from_raw_parts(self.ptr_at(i), len) }
+    }
+
+    #[inline]
+    fn as_bytes_to(&self, to: usize) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.ptr_at(self.read_pos()), to) }
+    }
+
+    #[inline]
+    fn as_bytes_range(&self, from: usize, len: usize) -> &[u8] {
         unsafe { slice::from_raw_parts(self.ptr_at(from), len) }
     }
 
@@ -211,7 +223,7 @@ impl Inner {
 #[derive(Debug)]
 pub struct ByteBuf {
     blocks: Vec<Inner>,
-    pos: usize,
+    idx: usize,
     growth: usize,
 }
 
@@ -558,7 +570,7 @@ impl ByteBuf {
         let growth = inner.capacity();
         ByteBuf {
             blocks: vec![inner],
-            pos: 0,
+            idx: 0,
             growth,
         }
     }
@@ -570,7 +582,7 @@ impl ByteBuf {
         }
         ByteBuf {
             blocks: Vec::new(),
-            pos: 0,
+            idx: 0,
             growth,
         }
     }
@@ -581,7 +593,7 @@ impl ByteBuf {
     }
 
     pub fn len(&self) -> usize {
-        (&self.blocks[self.pos..])
+        (&self.blocks[self.idx..])
             .iter()
             .fold(0, |len, b| len + b.len())
     }
@@ -604,24 +616,24 @@ impl ByteBuf {
     pub fn get<T, G>(&mut self, mut index: usize, get: G) -> Result<T>
         where G: Fn(&mut GetIter) -> Result<T>
     {
-        let pos = self.locate_pos(&mut index)?;
-        get(&mut self.get_iter(pos, index))
+        let idx = self.locate_idx(&mut index)?;
+        get(&mut self.get_iter(idx, index))
     }
 
     #[inline]
     pub fn get_exact<T, G>(&mut self, mut index: usize, len: usize, get_exact: G) -> Result<T>
         where G: Fn(&mut GetIter, usize) -> Result<T>
     {
-        let pos = self.locate_pos(&mut index)?;
-        get_exact(&mut self.get_iter(pos, index), len)
+        let idx = self.locate_idx(&mut index)?;
+        get_exact(&mut self.get_iter(idx, index), len)
     }
 
     #[inline]
     pub fn set<T, S>(&mut self, mut index: usize, t: T, set: S) -> Result<usize>
         where S: Fn(T, &mut SetIter) -> Result<usize>
     {
-        let pos = self.locate_pos(&mut index)?;
-        set(t, &mut self.set_iter(pos, index))
+        let idx = self.locate_idx(&mut index)?;
+        set(t, &mut self.set_iter(idx, index))
     }
 
     #[inline]
@@ -675,7 +687,7 @@ impl ByteBuf {
     }
 
     pub fn extend(&mut self, mut other: Self) {
-        let pos = other.pos;
+        let pos = other.idx;
         let n = other.blocks.len() - pos;
         let off = self.blocks.len();
         self.blocks.reserve(n);
@@ -691,15 +703,15 @@ impl ByteBuf {
     }
 
     pub fn split_off(&mut self, mut at: usize) -> Result<Self> {
-        let pos = self.locate_pos(&mut at)?;
-        let len = pos + 1;
+        let idx = self.locate_idx(&mut at)?;
+        let len = idx + 1;
         let n = self.blocks.len() - len;
         let mut other_blocks = Vec::new();
-        let mut other_pos = 0;
+        let mut other_idx = 0;
         let other_len;
         let mut dst_ptr;
         {
-            let block = unsafe { self.blocks.get_unchecked_mut(pos) };
+            let block = unsafe { self.blocks.get_unchecked_mut(idx) };
             let other_block = block.split_off(at);
             if !other_block.is_empty() || other_block.appendable() >= 8 {
                 other_len = n + 1;
@@ -709,17 +721,17 @@ impl ByteBuf {
                     ptr::write(dst_ptr, other_block);
                     dst_ptr = dst_ptr.offset(1);
                 }
-                if self.pos > pos {
-                    other_pos = self.pos - pos;
-                    self.pos = pos;
+                if self.idx > idx {
+                    other_idx = self.idx - idx;
+                    self.idx = idx;
                 }
             } else if n > 0 {
                 other_len = n;
                 other_blocks.reserve(other_len);
                 dst_ptr = other_blocks.as_mut_ptr();
-                if self.pos > pos {
-                    other_pos = self.pos - len;
-                    self.pos = pos;
+                if self.idx > idx {
+                    other_idx = self.idx - len;
+                    self.idx = idx;
                 }
             } else {
                 return Ok(Self::with_growth(self.growth));
@@ -734,7 +746,7 @@ impl ByteBuf {
 
         Ok(ByteBuf {
                blocks: other_blocks,
-               pos: other_pos,
+               idx: other_idx,
                growth: self.growth,
            })
     }
@@ -747,19 +759,19 @@ impl ByteBuf {
     }
 
     pub fn as_bytes(&self) -> Option<&[u8]> {
-        let mut pos = self.pos;
-        let mut idx = None;
-        while pos < self.blocks.len() {
-            if !unsafe { self.blocks.get_unchecked(pos) }.is_empty() {
-                if idx.is_some() {
+        let mut idx = self.idx;
+        let mut n = None;
+        while idx < self.blocks.len() {
+            if !unsafe { self.blocks.get_unchecked(idx) }.is_empty() {
+                if n.is_some() {
                     return None;
                 }
-                idx = Some(pos);
+                n = Some(idx);
             }
-            pos += 1;
+            idx += 1;
         }
 
-        match idx {
+        match n {
             Some(i) => Some(unsafe { self.blocks.get_unchecked(i) }.as_bytes()),
             None => Some(EMPTY),
         }
@@ -785,14 +797,12 @@ impl ByteBuf {
         if needle.is_empty() {
             return true;
         }
-        self.starts_with_internal(needle, self.pos)
+        self.starts_with_internal(needle, self.idx)
     }
 
-    pub fn ends_with(&self, mut needle: &[u8]) -> bool {
-        if needle.is_empty() {
-            return true;
-        }
-        for block in (&self.blocks[self.pos..]).iter().rev() {
+    #[inline]
+    fn ends_with_internal(&self, mut needle: &[u8], rpos: usize) -> bool {
+        for block in (&self.blocks[self.idx..rpos]).iter().rev() {
             if block.len() < needle.len() {
                 let (l, r) = needle.split_at(needle.len() - block.len());
                 needle = l;
@@ -806,35 +816,136 @@ impl ByteBuf {
         false
     }
 
+    pub fn ends_with(&self, needle: &[u8]) -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        self.ends_with_internal(needle, self.blocks.len())
+    }
+
     pub fn windows(&self, size: usize) -> Windows {
         windows::new(self, size)
     }
 
-    pub fn compact(&mut self) {
-        while self.pos < self.blocks.len() &&
-              unsafe { self.blocks.get_unchecked(self.pos) }.is_empty() {
-            self.pos += 1;
+    pub fn find_from(&self, needle: &[u8], mut pos: usize) -> Option<usize> {
+        let mut off = pos;
+        let mut idx = match self.locate_idx(&mut off) {
+            Ok(i) => i,
+            Err(..) => return None,
+        };
+        if needle.is_empty() {
+            return Some(pos);
         }
-        if self.pos > 0 {
-            let other_len = self.blocks.len() - self.pos;
+        let mut bytes = unsafe { self.blocks.get_unchecked(idx) }.as_bytes_from(off);
+        loop {
+            if bytes.len() >= needle.len() {
+                bytes = match bytes.windows(needle.len()).position(|w| w == needle) {
+                    Some(n) => return Some(pos + n),
+                    None => {
+                        let n = bytes.len() - needle.len() + 1;
+                        pos += n;
+                        &bytes[n..]
+                    }
+                };
+            }
+            idx += 1;
+            if idx >= self.blocks.len() {
+                break;
+            }
+            for m in 0..bytes.len() {
+                let (left, right) = needle.split_at(bytes.len() - m);
+                if &bytes[m..] == left {
+                    if self.starts_with_internal(right, idx) {
+                        return Some(pos + m);
+                    }
+                }
+            }
+            pos += bytes.len();
+            bytes = unsafe { self.blocks.get_unchecked(idx) }.as_bytes();
+        }
+        None
+    }
+
+    #[inline]
+    pub fn find(&self, needle: &[u8]) -> Option<usize> {
+        self.find_from(needle, 0)
+    }
+
+    pub fn rfind_from(&self, needle: &[u8], mut rpos: usize) -> Option<usize> {
+        rpos += needle.len();
+        let mut off = rpos;
+        let (mut idx, mut bytes) = match self.locate_idx(&mut off) {
+            Ok(i) => (i, unsafe { self.blocks.get_unchecked(i) }.as_bytes_to(off)),
+            Err(..) => {
+                rpos -= off;
+                match self.blocks.last() {
+                    Some(block) => {
+                        off = block.len();
+                        (self.blocks.len() - 1, block.as_bytes())
+                    }
+                    None => (self.idx, EMPTY),
+                }
+            }
+        };
+        if needle.is_empty() {
+            return Some(rpos);
+        }
+        rpos -= off;
+        loop {
+            if bytes.len() >= needle.len() {
+                bytes = match bytes.windows(needle.len()).rposition(|w| w == needle) {
+                    Some(n) => return Some(rpos + n),
+                    None => &bytes[..needle.len() - 1],
+                };
+            }
+            if idx == self.idx {
+                break;
+            }
+            for m in (1..bytes.len() + 1).rev() {
+                let (left, right) = needle.split_at(needle.len() - m);
+                if &bytes[..m] == right {
+                    if self.ends_with_internal(left, idx) {
+                        return Some(rpos + m - needle.len());
+                    }
+                }
+            }
+            idx -= 1;
+            bytes = unsafe { self.blocks.get_unchecked(idx) }.as_bytes();
+            rpos -= bytes.len();
+        }
+        None
+    }
+
+    #[inline]
+    pub fn rfind(&self, needle: &[u8]) -> Option<usize> {
+        self.rfind_from(needle, ::std::usize::MAX)
+    }
+
+    pub fn compact(&mut self) {
+        while self.idx < self.blocks.len() &&
+              unsafe { self.blocks.get_unchecked(self.idx) }.is_empty() {
+            self.idx += 1;
+        }
+        if self.idx > 0 {
+            let other_len = self.blocks.len() - self.idx;
             let mut other_blocks = Vec::new();
             other_blocks.reserve(other_len);
 
             unsafe {
-                ptr::copy_nonoverlapping(self.blocks.as_ptr().offset(self.pos as isize),
+                ptr::copy_nonoverlapping(self.blocks.as_ptr().offset(self.idx as isize),
                                          other_blocks.as_mut_ptr(),
                                          other_len);
-                self.blocks.set_len(self.pos);
+                self.blocks.set_len(self.idx);
                 other_blocks.set_len(other_len);
             }
             self.blocks = other_blocks;
-            self.pos = 0;
+            self.idx = 0;
         }
     }
 
     pub fn skip(&mut self, n: usize) -> usize {
         let mut skipped = 0;
-        let i = self.pos;
+        let i = self.idx;
         for block in &mut self.blocks[i..] {
             let m = block.len();
             skipped += m;
@@ -845,14 +956,14 @@ impl ByteBuf {
             } else {
                 let write_pos = block.write_pos();
                 block.set_read_pos(write_pos);
-                self.pos += 1;
+                self.idx += 1;
             }
         }
         skipped
     }
 
     pub fn is_empty(&self) -> bool {
-        for block in &self.blocks[self.pos..] {
+        for block in &self.blocks[self.idx..] {
             if !block.is_empty() {
                 return false;
             }
@@ -897,9 +1008,9 @@ impl ByteBuf {
     pub fn write_out<W>(&mut self, mut w: W) -> Result<usize>
         where W: Write + WriteV
     {
-        let n = self.blocks.len() - self.pos;
+        let n = self.blocks.len() - self.idx;
         if n == 1 {
-            let block = unsafe { self.blocks.get_unchecked_mut(self.pos) };
+            let block = unsafe { self.blocks.get_unchecked_mut(self.idx) };
             if block.len() < 1 {
                 return Ok(0);
             }
@@ -910,7 +1021,7 @@ impl ByteBuf {
             Ok(written)
         } else if n > 1 {
             let mut iovs = Vec::with_capacity(n);
-            for block in &self.blocks[self.pos..] {
+            for block in &self.blocks[self.idx..] {
                 if block.len() > 0 {
                     let off = block.read_pos();
                     iovs.push(IoVec::from(unsafe { &*block.ptr_at(off) }, block.len()));
@@ -946,12 +1057,12 @@ impl ByteBuf {
 
     #[inline]
     fn pos(&self) -> usize {
-        self.pos
+        self.idx
     }
 
     #[inline]
     fn inc_pos(&mut self) {
-        self.pos += 1;
+        self.idx += 1;
     }
 
     #[inline]
@@ -997,13 +1108,14 @@ impl ByteBuf {
         Prepender { inner: self }
     }
 
-    fn locate_pos(&self, index: &mut usize) -> Result<usize> {
-        for i in self.pos..self.blocks.len() {
-            let block_len = unsafe { self.blocks.get_unchecked(i) }.len();
-            if *index <= block_len {
+    fn locate_idx(&self, pos: &mut usize) -> Result<usize> {
+        let mut i = self.idx;
+        for block in &self.blocks[self.idx..] {
+            if *pos <= block.len() {
                 return Ok(i);
             }
-            *index -= block_len;
+            i += 1;
+            *pos -= block.len();
         }
         Err(Error::new(ErrorKind::UnexpectedEof, "Index out of bounds"))
     }
@@ -1125,7 +1237,7 @@ pub struct Bytes<'a> {
 
 impl<'a> Bytes<'a> {
     fn new(buf: &'a ByteBuf) -> Self {
-        let mut iter_inner = (&buf.blocks[buf.pos..]).iter();
+        let mut iter_inner = (&buf.blocks[buf.idx..]).iter();
         let iter_u8 = match iter_inner.next() {
             Some(inner) => {
                 let ptr = inner.ptr_at(inner.read_pos());
