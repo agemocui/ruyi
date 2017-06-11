@@ -32,7 +32,7 @@ impl<'a> Window<'a> {
     }
 
     #[inline]
-    pub fn to_bytes(self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         match self.off {
             Off::Left(off) => Self::to_bytes_left(self.blocks, off, self.size),
             Off::Right(off) => Self::to_bytes_right(self.blocks, off, self.size),
