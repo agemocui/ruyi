@@ -19,6 +19,7 @@ enum ConnectState {
     Connecting(TcpStream),
     Finishing(TcpStream),
     Connected(TcpStream),
+    Error(io::Error),
     Dead,
 }
 
@@ -32,14 +33,18 @@ impl TcpStream {
         TcpStream { inner: PollableIo::new(sock) }
     }
 
-    pub fn connect(addr: &SocketAddr) -> io::Result<TcpConnector> {
-        let (sock, connected) = nio::TcpStream::connect(addr)?;
-        let io = Self::from(sock);
-        let state = match connected {
-            false => ConnectState::Connecting(io),
-            true => ConnectState::Connected(io),
+    pub fn connect(addr: &SocketAddr) -> TcpConnector {
+        let state = match nio::TcpStream::connect(addr) {
+            Ok((sock, connected)) => {
+                let io = Self::from(sock);
+                match connected {
+                    false => ConnectState::Connecting(io),
+                    true => ConnectState::Connected(io),
+                }
+            }
+            Err(e) => ConnectState::Error(e),
         };
-        Ok(TcpConnector { state })
+        TcpConnector { state }
     }
 
     #[inline]
@@ -314,6 +319,7 @@ impl Future for TcpConnector {
                 }
             }
             ConnectState::Connected(sock) => Ok(Async::Ready(sock)),
+            ConnectState::Error(e) => Err(e),
             _ => ::unreachable(),
         }
     }
