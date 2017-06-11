@@ -37,14 +37,14 @@ impl RecvBuf {
 
 thread_local!(static RECV_BUF: RecvBuf = RecvBuf::new());
 
-fn read<R>(r: &mut R) -> io::Result<Option<ByteBuf>>
+fn read<R>(r: &mut R) -> io::Result<(Option<ByteBuf>, usize)>
     where R: AsyncRead
 {
     RECV_BUF.with(|recv_buf| {
                       let buf = recv_buf.get_mut();
                       let n = buf.read_in(r)?;
                       let data = if n > 0 { Some(buf.drain_to(n)?) } else { None };
-                      Ok(data)
+                      Ok((data, n))
                   })
 }
 
@@ -76,7 +76,7 @@ impl<R: AsyncRead> Stream for IStream<R> {
             return Ok(Async::NotReady);
         }
         match read(&mut self.r) {
-            Ok(data) => {
+            Ok((data, _)) => {
                 match data {
                     Some(bytes) => {
                         self.would_block = true;

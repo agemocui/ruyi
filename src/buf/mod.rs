@@ -498,7 +498,7 @@ impl ByteBuf {
         Ok(read)
     }
 
-    pub fn write_out<W>(&mut self, mut w: W) -> Result<usize>
+    pub fn write_out<W>(&mut self, w: &mut W) -> Result<usize>
         where W: Write + WriteV
     {
         let n = self.blocks.len() - self.idx;

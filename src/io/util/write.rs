@@ -7,7 +7,7 @@ use io::AsyncWrite;
 use buf::ByteBuf;
 
 enum State<W> {
-    Writing { buf: ByteBuf, w: W },
+    Writing { w: W, data: ByteBuf },
     Done,
 }
 
@@ -16,46 +16,52 @@ pub struct Write<W> {
 }
 
 #[inline]
-pub fn write<W>(buf: ByteBuf, w: W) -> Write<W>
+pub fn write<W>(w: W, data: ByteBuf) -> Write<W>
     where W: AsyncWrite
 {
-    Write { state: State::Writing { buf, w } }
+    Write { state: State::Writing { w, data } }
 }
 
 impl<W> Future for Write<W>
     where W: AsyncWrite
 {
-    type Item = (ByteBuf, W);
+    type Item = (W, ByteBuf, usize);
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (mut buf, mut w) = match mem::replace(&mut self.state, State::Done) {
-            State::Writing { buf, w } => (buf, w),
+        let n = match self.state {
+            State::Writing {
+                ref mut w,
+                ref mut data,
+            } => {
+                if !w.is_writable() {
+                    return Ok(Async::NotReady);
+                }
+                match data.write_out(w) {
+                    Ok(n) => {
+                        data.compact();
+                        match data.is_empty() {
+                            true => w.no_need_write()?,
+                            false => w.need_write()?,
+                        }
+                        n
+                    }
+                    Err(e) => {
+                        match e.kind() {
+                            io::ErrorKind::WouldBlock => {
+                                w.need_write()?;
+                                return Ok(Async::NotReady);
+                            }
+                            _ => return Err(e),
+                        }
+                    }
+                }
+            }
             State::Done => ::unreachable(),
         };
-        if !w.is_writable() {
-            self.state = State::Writing { buf, w };
-            return Ok(Async::NotReady);
-        }
-        match buf.write_out(&mut w) {
-            Ok(_) => {
-                buf.compact();
-                match buf.is_empty() {
-                    true => w.no_need_write()?,
-                    false => w.need_write()?,
-                }
-                Ok(Async::Ready((buf, w)))
-            }
-            Err(e) => {
-                match e.kind() {
-                    io::ErrorKind::WouldBlock => {
-                        w.need_write()?;
-                        self.state = State::Writing { buf, w };
-                        Ok(Async::NotReady)
-                    }
-                    _ => Err(e),
-                }
-            }
+        match mem::replace(&mut self.state, State::Done) {
+            State::Writing { w, data } => Ok(Async::Ready((w, data, n))),
+            State::Done => ::unreachable(),
         }
     }
 }

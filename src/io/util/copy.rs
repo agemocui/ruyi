@@ -36,27 +36,25 @@ impl<R, W> Future for Copy<R, W>
     where R: AsyncRead,
           W: AsyncWrite
 {
-    type Item = (u64, R, W);
+    type Item = (R, W, u64);
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match mem::replace(&mut self.r, ReadState::Dead) {
-            ReadState::Reading(mut r) => {
+        let mut done_read = false;
+        let mut eof = false;
+        match self.r {
+            ReadState::Reading(ref mut r) => {
                 if r.is_readable() {
-                    match super::read(&mut r) {
-                        Ok(data) => {
+                    match super::read(r) {
+                        Ok((data, _)) => {
                             match data {
-                                None => self.r = ReadState::Done(r),
+                                None => eof = true,
                                 Some(bytes) => {
-                                    self.buf = match self.buf.take() {
-                                        Some(mut buf) => {
-                                            buf.extend(bytes);
-                                            Some(buf)
-                                        }
-                                        None => Some(bytes),
+                                    match self.buf {
+                                        Some(ref mut buf) => buf.extend(bytes),
+                                        None => self.buf = Some(bytes),
                                     };
                                     r.need_read()?;
-                                    self.r = ReadState::Reading(r);
                                 }
                             }
                         }
@@ -65,45 +63,55 @@ impl<R, W> Future for Copy<R, W>
                                 io::ErrorKind::WouldBlock => r.need_read()?,
                                 _ => return Err(e),
                             }
-                            self.r = ReadState::Reading(r);
                         }
                     }
-                } else {
-                    self.r = ReadState::Reading(r);
                 }
             }
-            ReadState::Done(r) => self.r = ReadState::Done(r),
+            ReadState::Done(..) => done_read = true,
             _ => ::unreachable(),
         }
+        if eof {
+            match mem::replace(&mut self.r, ReadState::Dead) {
+                ReadState::Reading(r) => {
+                    self.r = ReadState::Done(r);
+                    done_read = true;
+                }
+                _ => ::unreachable(),
+            }
+        }
 
-        match self.w.take() {
-            Some(mut w) => {
+        match self.w {
+            Some(ref mut w) => {
                 if !w.is_writable() {
                     return Ok(Async::NotReady);
                 }
-                if let Some(mut buf) = self.buf.take() {
-                    self.len += buf.write_out(&mut w)? as u64;
+                if let Some(ref mut buf) = self.buf {
+                    self.len += buf.write_out(w)? as u64;
                     buf.compact();
-                    if !buf.is_empty() {
-                        w.need_write()?;
-                        self.buf = Some(buf);
-                        self.w = Some(w);
-                        return Ok(Async::NotReady);
-                    } else {
-                        w.no_need_write()?;
+                    match buf.is_empty() {
+                        false => {
+                            w.need_write()?;
+                            return Ok(Async::NotReady);
+                        }
+                        true => w.no_need_write()?,
                     }
-                }
-                match mem::replace(&mut self.r, ReadState::Dead) {
-                    ReadState::Reading(r) => {
-                        self.w = Some(w);
-                        self.r = ReadState::Reading(r);
-                        Ok(Async::NotReady)
-                    }
-                    ReadState::Done(r) => Ok(Async::Ready((self.len, r, w))),
-                    _ => ::unreachable(),
                 }
             }
             None => ::unreachable(),
+        }
+        match done_read {
+            true => {
+                match mem::replace(&mut self.r, ReadState::Dead) {
+                    ReadState::Done(r) => {
+                        match mem::replace(&mut self.w, None) {
+                            Some(w) => Ok(Async::Ready((r, w, self.len))),
+                            _ => ::unreachable(),
+                        }
+                    }
+                    _ => ::unreachable(),
+                }
+            }
+            false => Ok(Async::NotReady),
         }
     }
 }
