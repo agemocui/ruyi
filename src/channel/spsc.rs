@@ -114,6 +114,7 @@ impl<T> Drop for Inner<T> {
     }
 }
 
+#[derive(Debug)]
 struct SenderAwakener(Arc<Awakener>);
 
 impl Drop for SenderAwakener {
@@ -126,6 +127,7 @@ impl Drop for SenderAwakener {
     }
 }
 
+#[derive(Debug)]
 pub struct SyncSender<T> {
     inner: Arc<Inner<T>>,
     awakener: SenderAwakener,
