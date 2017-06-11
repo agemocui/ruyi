@@ -437,7 +437,7 @@ impl Inner {
     fn run(&mut self, main_task: &mut Future<Item = (), Error = ()>) {
         self.main_task = Some(unsafe { mem::transmute(main_task) });
         let mut events = Vec::with_capacity(self.sched_ios.capacity());
-        loop {
+        'exit: loop {
             match self.poll_timer_queue() {
                 Ok(timeout) => {
                     self.poll(&mut events, timeout).unwrap();
@@ -457,10 +457,10 @@ impl Inner {
                     (sched_io.read_task(), sched_io.write_task())
                 };
                 if event.ready_ops().contains_read() && self.run_task(read_task) {
-                    break;
+                    break 'exit;
                 }
                 if event.ready_ops().contains_write() && self.run_task(write_task) {
-                    break;
+                    break 'exit;
                 }
             }
         }
