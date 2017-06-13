@@ -33,7 +33,10 @@ impl<'a> fmt::Display for HexDump<'a> {
                 match next {
                     Some(b) => {
                         write!(f, " {:02X}", b)?;
-                        asc[i] = if (b as char).is_control() { b'.' } else { b };
+                        unsafe {
+                            let c = asc.get_unchecked_mut(i);
+                            *c = if (b as char).is_control() { b'.' } else { b };
+                        }
                         i += 1;
                         next = bytes.next();
                     }
