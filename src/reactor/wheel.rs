@@ -303,8 +303,8 @@ struct Timer {
 
 impl Timer {
     #[inline]
-    fn new(dur: Duration) -> Self {
-        Timer { state: TimerState::Unscheduled(dur) }
+    fn new(secs: u64) -> Self {
+        Timer { state: TimerState::Unscheduled(Duration::from_secs(secs)) }
     }
 
     #[inline]
@@ -341,8 +341,8 @@ pub struct Sleep {
 }
 
 #[inline]
-pub fn sleep(dur: Duration) -> Sleep {
-    Sleep { timer: Timer::new(dur) }
+pub fn sleep(secs: u64) -> Sleep {
+    Sleep { timer: Timer::new(secs) }
 }
 
 impl Future for Sleep {
@@ -361,8 +361,8 @@ pub struct Timeout {
 
 impl Timeout {
     #[inline]
-    pub fn new(dur: Duration) -> Self {
-        Timeout { timer: Timer::new(dur) }
+    pub fn new(secs: u64) -> Self {
+        Timeout { timer: Timer::new(secs) }
     }
 }
 

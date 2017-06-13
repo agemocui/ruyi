@@ -86,8 +86,8 @@ pub fn spawn(f: Task) {
 }
 
 #[inline]
-pub fn sleep(dur: Duration) -> Sleep {
-    wheel::sleep(dur)
+pub fn sleep(secs: u64) -> Sleep {
+    wheel::sleep(secs)
 }
 
 #[inline]
