@@ -89,18 +89,14 @@ mod linux;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub use self::linux::*;
 
-#[cfg(any(
-    target_os = "freebsd", target_os = "netbsd", target_os = "openbsd",
-    target_os = "ios", target_os = "macos",
-    target_os = "bitrig", target_os = "dragonfly",
-))]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "openbsd",
+            target_os = "ios", target_os = "macos", target_os = "bitrig",
+            target_os = "dragonfly"))]
 mod bsd;
 
-#[cfg(any(
-    target_os = "freebsd", target_os = "netbsd", target_os = "openbsd",
-    target_os = "ios", target_os = "macos",
-    target_os = "bitrig", target_os = "dragonfly",
-))]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "openbsd",
+            target_os = "ios", target_os = "macos", target_os = "bitrig",
+            target_os = "dragonfly"))]
 pub use self::bsd::*;
 
 pub mod tcp;

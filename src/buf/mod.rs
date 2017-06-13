@@ -154,7 +154,7 @@ impl ByteBuf {
                     };
 
                     #[cfg(debug_assertions)]
-                    first.set_read_pos(0);
+                    #[cfg(debug_assertions)] first.set_read_pos(0);
 
                     first.set_write_pos(reserved);
                     first.set_read_pos(reserved);
