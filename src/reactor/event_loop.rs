@@ -433,38 +433,60 @@ impl Inner {
         self.gate -= 1;
     }
 
+    fn clear(&mut self) {
+        self.tasks.clear();
+        self.wheel = None;
+        self.current_task = TaskId::invalid();
+    }
+
     #[inline]
     fn run(&mut self, main_task: &mut Future<Item = (), Error = ()>) {
         self.main_task = Some(unsafe { mem::transmute(main_task) });
-        let mut events = Vec::with_capacity(self.sched_ios.capacity());
-        'exit: loop {
-            match self.poll_timer_queue() {
-                Ok(timeout) => {
-                    self.poll(&mut events, timeout).unwrap();
+        if !self.run_main_task() {
+            let mut events = Vec::with_capacity(self.sched_ios.capacity());
+            'exit: loop {
+                match self.poll_timer_queue() {
+                    Ok(timeout) => {
+                        self.poll(&mut events, timeout).unwrap();
+                    }
+                    Err(()) => break,
                 }
-                Err(()) => break,
-            }
-            if self.poll_timer_queue().is_err() {
-                break;
-            }
+                if self.poll_timer_queue().is_err() {
+                    break;
+                }
 
-            for event in &events {
-                let token = event.token().into();
-                let (read_task, write_task) = {
-                    let sched_io = unsafe { self.sched_ios.get_unchecked_mut(token) };
-                    sched_io.set_readable(event.ready_ops().contains_read());
-                    sched_io.set_writable(event.ready_ops().contains_write());
-                    (sched_io.read_task(), sched_io.write_task())
-                };
-                if event.ready_ops().contains_read() && self.run_task(read_task) {
-                    break 'exit;
-                }
-                if event.ready_ops().contains_write() && self.run_task(write_task) {
-                    break 'exit;
+                for event in &events {
+                    let token = event.token().into();
+                    let (read_task, write_task) = {
+                        let sched_io = unsafe { self.sched_ios.get_unchecked_mut(token) };
+                        sched_io.set_readable(event.ready_ops().contains_read());
+                        sched_io.set_writable(event.ready_ops().contains_write());
+                        (sched_io.read_task(), sched_io.write_task())
+                    };
+                    if event.ready_ops().contains_read() && self.run_task(read_task) {
+                        break 'exit;
+                    }
+                    if event.ready_ops().contains_write() && self.run_task(write_task) {
+                        break 'exit;
+                    }
                 }
             }
         }
-        self.tasks.clear();
+        self.clear();
+    }
+
+    fn run_main_task(&mut self) -> bool {
+        match self.main_task {
+            Some(ref mut main_task) => {
+                match main_task.poll() {
+                    Ok(Async::NotReady) => return false,
+                    _ => {}
+                }
+            }
+            _ => ::unreachable(),
+        }
+        self.main_task = None;
+        self.gate == 0
     }
 
     #[inline]
@@ -477,14 +499,7 @@ impl Inner {
             }
             self.main_task.is_none() && self.gate == 0
         } else {
-            let main_task = self.main_task.take().unwrap();
-            match main_task.poll() {
-                Ok(Async::NotReady) => {
-                    self.main_task = Some(main_task);
-                    false
-                }
-                _ => self.gate == 0,
-            }
+            self.run_main_task()
         }
     }
 
@@ -705,15 +720,9 @@ impl fmt::Debug for Inner {
 
 impl EventLoop {
     #[inline]
-    pub fn run<F>(&self, mut f: F) -> Result<F::Item, F::Error>
+    pub fn run<F>(&self, f: F) -> Result<F::Item, F::Error>
         where F: Future
     {
-        match f.poll() {
-            Ok(Async::NotReady) => {}
-            Ok(Async::Ready(t)) => return Ok(t),
-            Err(e) => return Err(e),
-        }
-
         let mut main_task = MainTask::new(f);
         self.as_mut_inner().run(&mut main_task);
         main_task.take_result()
