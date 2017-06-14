@@ -293,6 +293,7 @@ impl Wheel {
 enum TimerState {
     Unscheduled(Duration),
     Scheduled(TimerId),
+    Expired,
     Cancelled,
 }
 
@@ -304,7 +305,12 @@ struct Timer {
 impl Timer {
     #[inline]
     fn new(secs: u64) -> Self {
-        Timer { state: TimerState::Unscheduled(Duration::from_secs(secs)) }
+        let state = if secs == 0 {
+            TimerState::Expired
+        } else {
+            TimerState::Unscheduled(Duration::from_secs(secs))
+        };
+        Timer { state }
     }
 
     #[inline]
@@ -321,6 +327,7 @@ impl Timer {
                 self.state = TimerState::Scheduled(timer_id);
                 Ok(Async::NotReady)
             }
+            TimerState::Expired => Ok(Async::Ready(())),
             TimerState::Cancelled => ::unreachable(),
         }
     }

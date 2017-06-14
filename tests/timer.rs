@@ -2,7 +2,7 @@ extern crate futures;
 extern crate ruyi;
 
 use std::time::{Instant, Duration};
-use futures::Future;
+use futures::{Future, Async};
 
 use ruyi::reactor::{self, Timer};
 
@@ -33,6 +33,8 @@ fn sleep() {
         }
     });
     reactor::run(sleep).unwrap();
+
+    assert_eq!(reactor::sleep(0).poll(), Ok(Async::Ready(())));
 }
 
 #[test]
