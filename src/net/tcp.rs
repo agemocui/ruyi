@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io;
 use std::mem;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown};
@@ -88,6 +89,13 @@ impl TcpStream {
     }
 }
 
+impl fmt::Display for TcpStream {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use std::fmt::Debug;
+        self.inner.get_ref().fmt(f)
+    }
+}
+
 impl io::Read for TcpStream {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -159,6 +167,7 @@ pub struct Incoming {
     io: PollableIo<nio::TcpListener>,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct TcpListenerBuilder {
     addr: SocketAddr,
     backlog: i32,
@@ -221,36 +230,36 @@ impl Default for TcpListenerBuilder {
 
 impl TcpListenerBuilder {
     #[inline]
-    pub fn addr(mut self, addr: SocketAddr) -> Self {
+    pub fn addr(&mut self, addr: SocketAddr) -> &mut Self {
         self.addr = addr;
         self
     }
 
     #[inline]
-    pub fn port(mut self, port: u16) -> Self {
+    pub fn port(&mut self, port: u16) -> &mut Self {
         self.addr.set_port(port);
         self
     }
 
     #[inline]
-    pub fn backlog(mut self, backlog: i32) -> Self {
+    pub fn backlog(&mut self, backlog: i32) -> &mut Self {
         self.backlog = backlog;
         self
     }
 
     #[inline]
-    pub fn ttl(mut self, ttl: Option<u32>) -> Self {
+    pub fn ttl(&mut self, ttl: Option<u32>) -> &mut Self {
         self.ttl = ttl;
         self
     }
 
     #[inline]
-    pub fn only_v6(mut self, only_v6: Option<bool>) -> Self {
+    pub fn only_v6(&mut self, only_v6: Option<bool>) -> &mut Self {
         self.only_v6 = only_v6;
         self
     }
 
-    pub fn build(self) -> io::Result<TcpListener> {
+    pub fn build(&self) -> io::Result<TcpListener> {
         let builder = match self.addr {
             SocketAddr::V4(..) => TcpBuilder::new_v4()?,
             SocketAddr::V6(..) => TcpBuilder::new_v6()?,

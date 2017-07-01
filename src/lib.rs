@@ -5,7 +5,6 @@ extern crate log;
 extern crate libc;
 
 extern crate net2;
-
 extern crate futures;
 
 #[cfg(target_pointer_width = "32")]
@@ -37,3 +36,4 @@ pub mod io;
 pub mod reactor;
 pub mod channel;
 pub mod net;
+pub mod service;
