@@ -37,7 +37,9 @@ fn main() {
         let (tx, rx) = spsc::sync_channel(512).unwrap();
 
         // Start an IO worker
-        thread::spawn(move || reactor::run(rx.into_stream().for_each(|s| Ok(echo(s)))).unwrap());
+        thread::spawn(move || {
+            reactor::run(rx.into_stream().for_each(|s| Ok(echo(s)))).unwrap()
+        });
         workers.push(tx);
     }
 
@@ -50,11 +52,11 @@ fn main() {
         .unwrap()
         .incoming()
         .for_each(|(sock, _)| {
-                      // Dispatch sockets to IO workers in a round-robin manner
-                      workers[i].try_send(sock).unwrap();
-                      i = (i + 1) & mask;
-                      Ok(())
-                  });
+            // Dispatch sockets to IO workers in a round-robin manner
+            workers[i].try_send(sock).unwrap();
+            i = (i + 1) & mask;
+            Ok(())
+        });
 
     // Run acceptor
     reactor::run(acceptor).unwrap();

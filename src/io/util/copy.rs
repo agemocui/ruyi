@@ -21,8 +21,9 @@ pub struct Copy<R, W> {
 
 #[inline]
 pub fn copy<R, W>(r: R, w: W) -> Copy<R, W>
-    where R: AsyncRead,
-          W: AsyncWrite
+where
+    R: AsyncRead,
+    W: AsyncWrite,
 {
     Copy {
         r: ReadState::Reading(r),
@@ -33,8 +34,9 @@ pub fn copy<R, W>(r: R, w: W) -> Copy<R, W>
 }
 
 impl<R, W> Future for Copy<R, W>
-    where R: AsyncRead,
-          W: AsyncWrite
+where
+    R: AsyncRead,
+    W: AsyncWrite,
 {
     type Item = (R, W, u64);
     type Error = io::Error;

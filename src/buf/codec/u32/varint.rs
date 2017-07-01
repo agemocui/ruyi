@@ -19,7 +19,10 @@ pub fn read(chain: &mut ReadIter) -> io::Result<u32> {
         }
         block.set_read_pos(write_pos);
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u32::varint::read"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::u32::varint::read",
+    ))
 }
 
 pub fn get(chain: &mut GetIter) -> io::Result<u32> {
@@ -36,7 +39,10 @@ pub fn get(chain: &mut GetIter) -> io::Result<u32> {
             shift = shift.wrapping_add(7);
         }
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u32::varint::get"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::u32::varint::get",
+    ))
 }
 
 pub fn set(mut v: u32, chain: &mut SetIter) -> io::Result<usize> {
@@ -54,7 +60,10 @@ pub fn set(mut v: u32, chain: &mut SetIter) -> io::Result<usize> {
             v >>= 7;
         }
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u32::varint::set"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::u32::varint::set",
+    ))
 }
 
 pub fn append(mut v: u32, chain: &mut Appender) -> io::Result<usize> {

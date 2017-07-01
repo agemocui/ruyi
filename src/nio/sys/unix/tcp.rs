@@ -10,9 +10,11 @@ use super::IoVec;
 #[inline]
 pub fn new_v4() -> io::Result<TcpStream> {
     let res = unsafe {
-        libc::socket(libc::AF_INET,
-                     libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-                     0)
+        libc::socket(
+            libc::AF_INET,
+            libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+            0,
+        )
     };
     let fd = super::cvt(res)?;
     Ok(unsafe { TcpStream::from_raw_fd(fd) })
@@ -21,9 +23,11 @@ pub fn new_v4() -> io::Result<TcpStream> {
 #[inline]
 pub fn new_v6() -> io::Result<TcpStream> {
     let res = unsafe {
-        libc::socket(libc::AF_INET6,
-                     libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-                     0)
+        libc::socket(
+            libc::AF_INET6,
+            libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+            0,
+        )
     };
     let fd = super::cvt(res)?;
     Ok(unsafe { TcpStream::from_raw_fd(fd) })
@@ -33,10 +37,18 @@ pub fn new_v6() -> io::Result<TcpStream> {
 pub fn connect(addr: &SocketAddr) -> io::Result<(TcpStream, bool)> {
     let (sock, addr, len) = match *addr {
         SocketAddr::V4(ref a) => {
-            (new_v4()?, a as *const _ as *const _, mem::size_of_val(a) as libc::socklen_t)
+            (
+                new_v4()?,
+                a as *const _ as *const _,
+                mem::size_of_val(a) as libc::socklen_t,
+            )
         }
         SocketAddr::V6(ref a) => {
-            (new_v6()?, a as *const _ as *const _, mem::size_of_val(a) as libc::socklen_t)
+            (
+                new_v6()?,
+                a as *const _ as *const _,
+                mem::size_of_val(a) as libc::socklen_t,
+            )
         }
     };
     let res = unsafe { libc::connect(sock.as_raw_fd(), addr, len) };
@@ -70,7 +82,10 @@ fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
             Ok(SocketAddr::V6(unsafe { mem::transmute(addr) }))
         }
-        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid argument")),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid argument",
+        )),
     }
 }
 
@@ -79,10 +94,12 @@ pub fn accept(listener: &TcpListener) -> io::Result<(TcpStream, SocketAddr)> {
     let mut storage: libc::sockaddr_storage = unsafe { mem::uninitialized() };
     let mut len = mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     let res = unsafe {
-        libc::accept4(listener.as_raw_fd(),
-                      &mut storage as *mut _ as *mut _,
-                      &mut len,
-                      libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC)
+        libc::accept4(
+            listener.as_raw_fd(),
+            &mut storage as *mut _ as *mut _,
+            &mut len,
+            libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+        )
     };
     let fd = super::cvt(res)?;
     let sock = unsafe { TcpStream::from_raw_fd(fd) };

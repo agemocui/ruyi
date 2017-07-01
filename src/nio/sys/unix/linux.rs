@@ -53,11 +53,12 @@ impl Selector {
     }
 
     #[inline]
-    pub fn select(&self,
-                  event_ptr: *mut Event,
-                  max_events: usize,
-                  timeout: Option<Duration>)
-                  -> io::Result<usize> {
+    pub fn select(
+        &self,
+        event_ptr: *mut Event,
+        max_events: usize,
+        timeout: Option<Duration>,
+    ) -> io::Result<usize> {
         let events = event_ptr as *mut libc::epoll_event;
         let len = max_events as libc::c_int;
         let millis = match timeout {
@@ -71,8 +72,9 @@ impl Selector {
 
     #[inline]
     pub fn register<O, T>(&self, fd: RawFd, interested_ops: O, token: T) -> io::Result<()>
-        where O: Into<usize>,
-              T: Into<usize>
+    where
+        O: Into<usize>,
+        T: Into<usize>,
     {
         let mut ev = Event::new(interested_ops.into(), token.into());
         let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut ev.inner) };
@@ -81,8 +83,9 @@ impl Selector {
 
     #[inline]
     pub fn reregister<O, T>(&self, fd: RawFd, interested_ops: O, token: T) -> io::Result<()>
-        where O: Into<usize>,
-              T: Into<usize>
+    where
+        O: Into<usize>,
+        T: Into<usize>,
     {
         let mut ev = Event::new(interested_ops.into(), token.into());
         let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_MOD, fd, &mut ev.inner) };

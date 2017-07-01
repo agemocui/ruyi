@@ -62,10 +62,12 @@ impl IoVec {
 impl fmt::Debug for IoVec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let base: usize = unsafe { mem::transmute(self.inner.iov_base) };
-        write!(f,
-               "{{ iov_base: 0x{:08x}, iov_len: {} }}",
-               base,
-               self.inner.iov_len as usize)
+        write!(
+            f,
+            "{{ iov_base: 0x{:08x}, iov_len: {} }}",
+            base,
+            self.inner.iov_len as usize
+        )
     }
 }
 

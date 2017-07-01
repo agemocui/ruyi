@@ -46,9 +46,17 @@ fn timer() {
         assert_eq!(res.is_ok(), true);
         let elapsed = Instant::now() - start;
         if into_millis(elapsed) < TIMEOUT - 1 {
-            Err(format!("Expect elapsed({:?}) >= {}ms", elapsed, TIMEOUT - 1))
+            Err(format!(
+                "Expect elapsed({:?}) >= {}ms",
+                elapsed,
+                TIMEOUT - 1
+            ))
         } else if into_millis(elapsed) > TIMEOUT + 1 {
-            Err(format!("Expect elapsed({:?}) <= {}ms", elapsed, TIMEOUT + 1))
+            Err(format!(
+                "Expect elapsed({:?}) <= {}ms",
+                elapsed,
+                TIMEOUT + 1
+            ))
         } else {
             Ok(())
         }

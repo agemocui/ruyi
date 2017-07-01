@@ -405,17 +405,17 @@ impl Inner {
         static SEQ: AtomicUsize = ATOMIC_USIZE_INIT;
         let id = EventLoopId(SEQ.fetch_add(1, Ordering::Relaxed));
         Ok(Inner {
-               id: id,
-               tasks: slab::with_capacity(512),
-               sched_ios: slab::with_capacity(512),
-               timer_queue: TimerQueue::new(),
-               wheel: None,
-               current_task: TaskId::invalid(),
-               spawn_stack: Vec::new(),
-               poller: Poller::new()?,
-               gate: 0,
-               main_task: None,
-           })
+            id: id,
+            tasks: slab::with_capacity(512),
+            sched_ios: slab::with_capacity(512),
+            timer_queue: TimerQueue::new(),
+            wheel: None,
+            current_task: TaskId::invalid(),
+            spawn_stack: Vec::new(),
+            poller: Poller::new()?,
+            gate: 0,
+            main_task: None,
+        })
     }
 
     #[inline]
@@ -582,29 +582,32 @@ impl Inner {
             cap = events.capacity();
         }
         unsafe { events.set_len(cap) };
-        let n = self.poller
-            .poll(events.as_mut_slice(), timeout)
-            .or_else(|e| {
-                         unsafe { events.set_len(0) };
-                         Err(e)
-                     })?;
+        let n = self.poller.poll(events.as_mut_slice(), timeout).or_else(
+            |e| {
+                unsafe { events.set_len(0) };
+                Err(e)
+            },
+        )?;
         unsafe { events.set_len(n) };
         Ok(())
     }
 
     #[inline]
     fn register_io<P, B>(&mut self, pollable: B, interested_ops: Ops) -> io::Result<usize>
-        where P: Pollable,
-              B: Borrow<P>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
-        let sched_io = SchedIo::new(self.current_task,
-                                    self.current_task,
-                                    !interested_ops.contains_read(),
-                                    !interested_ops.contains_write());
+        let sched_io = SchedIo::new(
+            self.current_task,
+            self.current_task,
+            !interested_ops.contains_read(),
+            !interested_ops.contains_write(),
+        );
         let sched_idx = self.sched_ios.insert(sched_io);
         match pollable
-                  .borrow()
-                  .register(&self.poller, interested_ops, Token::from(sched_idx)) {
+            .borrow()
+            .register(&self.poller, interested_ops, Token::from(sched_idx)) {
             Ok(()) => Ok(sched_idx),
             Err(e) => {
                 self.sched_ios.remove(sched_idx);
@@ -614,14 +617,16 @@ impl Inner {
     }
 
     #[inline]
-    fn reregister_io<P, B>(&mut self,
-                           pollable: B,
-                           interested_ops: Ops,
-                           sched_idx: usize,
-                           sched_io_ops: Ops)
-                           -> io::Result<()>
-        where P: Pollable,
-              B: Borrow<P>
+    fn reregister_io<P, B>(
+        &mut self,
+        pollable: B,
+        interested_ops: Ops,
+        sched_idx: usize,
+        sched_io_ops: Ops,
+    ) -> io::Result<()>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
         let sched_io = unsafe { self.sched_ios.get_unchecked_mut(sched_idx) };
         if sched_io_ops.contains_read() {
@@ -643,8 +648,9 @@ impl Inner {
 
     #[inline]
     fn deregister_io<P, B>(&mut self, pollable: B, sched_idx: usize) -> io::Result<()>
-        where P: Pollable,
-              B: Borrow<P>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
         match pollable.borrow().deregister(&self.poller) {
             Ok(()) => Ok(drop(self.sched_ios.remove(sched_idx))),
@@ -721,7 +727,8 @@ impl fmt::Debug for Inner {
 impl EventLoop {
     #[inline]
     pub fn run<F>(&self, f: F) -> Result<F::Item, F::Error>
-        where F: Future
+    where
+        F: Future,
     {
         let mut main_task = MainTask::new(f);
         self.as_mut_inner().run(&mut main_task);
@@ -735,21 +742,24 @@ impl EventLoop {
 
     #[inline]
     pub fn register_io<P, B>(&self, pollable: B, interested_ops: Ops) -> io::Result<usize>
-        where P: Pollable,
-              B: Borrow<P>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
         self.as_mut_inner().register_io(pollable, interested_ops)
     }
 
     #[inline]
-    pub fn reregister_io<P, B>(&self,
-                               pollable: B,
-                               interested_ops: Ops,
-                               sched_idx: usize,
-                               sched_io_ops: Ops)
-                               -> io::Result<()>
-        where P: Pollable,
-              B: Borrow<P>
+    pub fn reregister_io<P, B>(
+        &self,
+        pollable: B,
+        interested_ops: Ops,
+        sched_idx: usize,
+        sched_io_ops: Ops,
+    ) -> io::Result<()>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
         self.as_mut_inner()
             .reregister_io(pollable, interested_ops, sched_idx, sched_io_ops)
@@ -757,8 +767,9 @@ impl EventLoop {
 
     #[inline]
     pub fn deregister_io<P, B>(&self, pollable: B, sched_idx: usize) -> io::Result<()>
-        where P: Pollable,
-              B: Borrow<P>
+    where
+        P: Pollable,
+        B: Borrow<P>,
     {
         self.as_mut_inner().deregister_io(pollable, sched_idx)
     }

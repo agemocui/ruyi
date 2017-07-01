@@ -254,12 +254,14 @@ impl Wheel {
         let dur = Duration::from_secs(1);
         let inner = Rc::new(UnsafeCell::new(Inner::new()));
         let wheel = Wheel { inner: inner.clone() };
-        super::spawn(PeriodicTimer::new(dur, dur)
-                         .for_each(move |_| {
-                                       unsafe { &mut *inner.as_ref().get() }.tick();
-                                       Ok(())
-                                   })
-                         .into_task());
+        super::spawn(
+            PeriodicTimer::new(dur, dur)
+                .for_each(move |_| {
+                    unsafe { &mut *inner.as_ref().get() }.tick();
+                    Ok(())
+                })
+                .into_task(),
+        );
         wheel
     }
 

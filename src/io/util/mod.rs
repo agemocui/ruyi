@@ -38,14 +38,15 @@ impl RecvBuf {
 thread_local!(static RECV_BUF: RecvBuf = RecvBuf::new());
 
 fn read<R>(r: &mut R) -> io::Result<(Option<ByteBuf>, usize)>
-    where R: AsyncRead
+where
+    R: AsyncRead,
 {
     RECV_BUF.with(|recv_buf| {
-                      let buf = recv_buf.get_mut();
-                      let n = buf.read_in(r)?;
-                      let data = if n > 0 { Some(buf.drain_to(n)?) } else { None };
-                      Ok((data, n))
-                  })
+        let buf = recv_buf.get_mut();
+        let n = buf.read_in(r)?;
+        let data = if n > 0 { Some(buf.drain_to(n)?) } else { None };
+        Ok((data, n))
+    })
 }
 
 pub mod read;

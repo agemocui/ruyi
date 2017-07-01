@@ -19,12 +19,12 @@ impl Awakener {
     #[inline]
     pub fn new() -> io::Result<Self> {
         Ok(Awakener {
-               inner: sys::Awakener::new()?,
-               _padding0: [0; cache_line_pad!(1)],
-               need_wakeup: AtomicBool::new(true),
-               _padding1: [0; word_len!() - 1],
-               _padding2: [0; cache_line_pad!(0)],
-           })
+            inner: sys::Awakener::new()?,
+            _padding0: [0; cache_line_pad!(1)],
+            need_wakeup: AtomicBool::new(true),
+            _padding1: [0; word_len!() - 1],
+            _padding2: [0; cache_line_pad!(0)],
+        })
     }
 
     pub fn wakeup(&self) -> io::Result<()> {
@@ -40,7 +40,7 @@ impl Awakener {
 
     pub fn wakeup_m(&self) -> io::Result<()> {
         match self.need_wakeup
-                  .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
             Ok(_) => self.inner.wakeup(),
             _ => Ok(()),
         }
@@ -77,9 +77,11 @@ impl Pollable for Awakener {
 
 impl fmt::Debug for Awakener {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Awakener {{ inner: {:?}, need_wakeup: {:?} }}",
-               self.inner,
-               self.need_wakeup)
+        write!(
+            f,
+            "Awakener {{ inner: {:?}, need_wakeup: {:?} }}",
+            self.inner,
+            self.need_wakeup
+        )
     }
 }

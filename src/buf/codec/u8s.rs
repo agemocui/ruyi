@@ -61,7 +61,10 @@ pub fn read_exact(chain: &mut ReadIter, mut n: usize) -> io::Result<Vec<u8>> {
         let pos = block.write_pos();
         block.set_read_pos(pos);
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u8s::read_exact"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::u8s::read_exact",
+    ))
 }
 
 #[inline]
@@ -91,7 +94,10 @@ pub fn get_exact(chain: &mut GetIter, mut n: usize) -> io::Result<Vec<u8>> {
             ptr_dst = ptr_dst.offset(len as isize);
         }
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u8s::get_exact"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::u8s::get_exact",
+    ))
 }
 
 pub fn set(v: &[u8], chain: &mut SetIter) -> io::Result<usize> {

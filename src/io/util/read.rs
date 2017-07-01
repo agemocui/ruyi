@@ -17,13 +17,15 @@ pub struct Read<R> {
 
 #[inline]
 pub fn read<R>(r: R) -> Read<R>
-    where R: AsyncRead
+where
+    R: AsyncRead,
 {
     Read { state: State::Reading { r } }
 }
 
 impl<R> Future for Read<R>
-    where R: AsyncRead
+where
+    R: AsyncRead,
 {
     type Item = (R, Option<ByteBuf>, usize);
     type Error = io::Error;

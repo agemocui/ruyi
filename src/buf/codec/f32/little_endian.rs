@@ -30,7 +30,10 @@ pub fn read(chain: &mut ReadIter) -> io::Result<f32> {
         let pos = block.write_pos();
         block.set_read_pos(pos);
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::f32::little_endian::read"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::f32::little_endian::read",
+    ))
 }
 
 pub fn get(chain: &mut GetIter) -> io::Result<f32> {
@@ -54,7 +57,10 @@ pub fn get(chain: &mut GetIter) -> io::Result<f32> {
             ptr_dst = ptr_dst.offset(len as isize);
         }
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::f32::little_endian::get"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::f32::little_endian::get",
+    ))
 }
 
 pub fn set(mut v: f32, chain: &mut SetIter) -> io::Result<usize> {
@@ -77,7 +83,10 @@ pub fn set(mut v: f32, chain: &mut SetIter) -> io::Result<usize> {
             ptr_src = ptr_src.offset(len as isize);
         }
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::f32::little_endian::set"))
+    Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "codec::f32::little_endian::set",
+    ))
 }
 
 pub fn append(mut v: f32, chain: &mut Appender) -> io::Result<usize> {

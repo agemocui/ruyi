@@ -93,21 +93,24 @@ impl ByteBuf {
 
     #[inline]
     pub fn read<T, R>(&mut self, read: R) -> Result<T>
-        where R: Fn(&mut ReadIter) -> Result<T>
+    where
+        R: Fn(&mut ReadIter) -> Result<T>,
     {
         read(&mut self.read_iter())
     }
 
     #[inline]
     pub fn read_exact<T, R>(&mut self, len: usize, read_exact: R) -> Result<T>
-        where R: Fn(&mut ReadIter, usize) -> Result<T>
+    where
+        R: Fn(&mut ReadIter, usize) -> Result<T>,
     {
         read_exact(&mut self.read_iter(), len)
     }
 
     #[inline]
     pub fn get<T, G>(&mut self, mut index: usize, get: G) -> Result<T>
-        where G: Fn(&mut GetIter) -> Result<T>
+    where
+        G: Fn(&mut GetIter) -> Result<T>,
     {
         let idx = self.locate_idx(&mut index)?;
         get(&mut self.get_iter(idx, index))
@@ -115,7 +118,8 @@ impl ByteBuf {
 
     #[inline]
     pub fn get_exact<T, G>(&mut self, mut index: usize, len: usize, get_exact: G) -> Result<T>
-        where G: Fn(&mut GetIter, usize) -> Result<T>
+    where
+        G: Fn(&mut GetIter, usize) -> Result<T>,
     {
         let idx = self.locate_idx(&mut index)?;
         get_exact(&mut self.get_iter(idx, index), len)
@@ -123,7 +127,8 @@ impl ByteBuf {
 
     #[inline]
     pub fn set<T, S>(&mut self, mut index: usize, t: T, set: S) -> Result<usize>
-        where S: Fn(T, &mut SetIter) -> Result<usize>
+    where
+        S: Fn(T, &mut SetIter) -> Result<usize>,
     {
         let idx = self.locate_idx(&mut index)?;
         set(t, &mut self.set_iter(idx, index))
@@ -131,14 +136,16 @@ impl ByteBuf {
 
     #[inline]
     pub fn append<T, A>(&mut self, t: T, append: A) -> Result<usize>
-        where A: Fn(T, &mut Appender) -> Result<usize>
+    where
+        A: Fn(T, &mut Appender) -> Result<usize>,
     {
         append(t, &mut self.appender())
     }
 
     #[inline]
     pub fn prepend<T, P>(&mut self, t: T, prepend: P) -> Result<usize>
-        where P: Fn(T, &mut Prepender) -> Result<usize>
+    where
+        P: Fn(T, &mut Prepender) -> Result<usize>,
     {
         prepend(t, &mut self.prepender())
     }
@@ -186,9 +193,11 @@ impl ByteBuf {
         let dst_ptr = self.blocks.as_mut_ptr();
         unsafe {
             self.blocks.set_len(off + n);
-            ptr::copy_nonoverlapping(src_ptr.offset(pos as isize),
-                                     dst_ptr.offset(off as isize),
-                                     n);
+            ptr::copy_nonoverlapping(
+                src_ptr.offset(pos as isize),
+                dst_ptr.offset(off as isize),
+                n,
+            );
             other.blocks.set_len(pos);
         }
     }
@@ -236,10 +245,10 @@ impl ByteBuf {
         }
 
         Ok(ByteBuf {
-               blocks: other_blocks,
-               idx: other_idx,
-               growth: self.growth,
-           })
+            blocks: other_blocks,
+            idx: other_idx,
+            growth: self.growth,
+        })
     }
 
     #[inline]
@@ -414,7 +423,8 @@ impl ByteBuf {
 
     pub fn compact(&mut self) {
         while self.idx < self.blocks.len() &&
-              unsafe { self.blocks.get_unchecked(self.idx) }.is_empty() {
+            unsafe { self.blocks.get_unchecked(self.idx) }.is_empty()
+        {
             self.idx += 1;
         }
         if self.idx > 0 {
@@ -423,9 +433,11 @@ impl ByteBuf {
             other_blocks.reserve(other_len);
 
             unsafe {
-                ptr::copy_nonoverlapping(self.blocks.as_ptr().offset(self.idx as isize),
-                                         other_blocks.as_mut_ptr(),
-                                         other_len);
+                ptr::copy_nonoverlapping(
+                    self.blocks.as_ptr().offset(self.idx as isize),
+                    other_blocks.as_mut_ptr(),
+                    other_len,
+                );
                 self.blocks.set_len(self.idx);
                 other_blocks.set_len(other_len);
             }
@@ -463,7 +475,8 @@ impl ByteBuf {
     }
 
     pub fn read_in<R>(&mut self, mut r: R) -> Result<usize>
-        where R: Read + ReadV
+    where
+        R: Read + ReadV,
     {
         let n = self.blocks.len() as isize;
         let ptr = self.blocks.as_mut_ptr();
@@ -475,8 +488,10 @@ impl ByteBuf {
             let size2 = last_2nd.appendable();
             if size2 > 0 {
                 let off2 = last_2nd.write_pos();
-                let iovs = [IoVec::from_mut(unsafe { &mut *last_2nd.mut_ptr_at(off2) }, size2),
-                            IoVec::from_mut(unsafe { &mut *last.mut_ptr_at(off) }, size)];
+                let iovs = [
+                    IoVec::from_mut(unsafe { &mut *last_2nd.mut_ptr_at(off2) }, size2),
+                    IoVec::from_mut(unsafe { &mut *last.mut_ptr_at(off) }, size),
+                ];
                 let read = r.readv(&iovs)?;
                 if read <= size2 {
                     last_2nd.set_write_pos(off2 + read);
@@ -497,7 +512,8 @@ impl ByteBuf {
     }
 
     pub fn write_out<W>(&mut self, w: &mut W) -> Result<usize>
-        where W: Write + WriteV
+    where
+        W: Write + WriteV,
     {
         let n = self.blocks.len() - self.idx;
         if n == 1 {

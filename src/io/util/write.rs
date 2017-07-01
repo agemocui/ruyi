@@ -17,13 +17,15 @@ pub struct Write<W> {
 
 #[inline]
 pub fn write<W>(w: W, data: ByteBuf) -> Write<W>
-    where W: AsyncWrite
+where
+    W: AsyncWrite,
 {
     Write { state: State::Writing { w, data } }
 }
 
 impl<W> Future for Write<W>
-    where W: AsyncWrite
+where
+    W: AsyncWrite,
 {
     type Item = (W, ByteBuf, usize);
     type Error = io::Error;

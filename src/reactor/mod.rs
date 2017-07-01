@@ -71,14 +71,15 @@ pub fn gate() -> Option<Gate> {
 }
 
 pub fn run<F>(f: F) -> Result<F::Item, F::Error>
-    where F: Future
+where
+    F: Future,
 {
     CURRENT_LOOP.with(|eloop| {
-                          info!("{} started", eloop);
-                          let res = eloop.run(f);
-                          info!("{} stopped", eloop);
-                          res
-                      })
+        info!("{} started", eloop);
+        let res = eloop.run(f);
+        info!("{} stopped", eloop);
+        res
+    })
 }
 
 pub fn spawn(f: Task) {
@@ -102,29 +103,34 @@ fn schedule(at: Instant, period: Duration) -> TimerTaskId {
 
 #[inline]
 fn register_io<P, B>(pollable: B, interested_ops: Ops) -> io::Result<usize>
-    where P: Pollable,
-          B: Borrow<P>
+where
+    P: Pollable,
+    B: Borrow<P>,
 {
     CURRENT_LOOP.with(|eloop| eloop.register_io(pollable, interested_ops))
 }
 
 #[inline]
-fn reregister_io<P, B>(pollable: B,
-                       interested_ops: Ops,
-                       sched_idx: usize,
-                       sched_io_ops: Ops)
-                       -> io::Result<()>
-    where P: Pollable,
-          B: Borrow<P>
+fn reregister_io<P, B>(
+    pollable: B,
+    interested_ops: Ops,
+    sched_idx: usize,
+    sched_io_ops: Ops,
+) -> io::Result<()>
+where
+    P: Pollable,
+    B: Borrow<P>,
 {
-    CURRENT_LOOP
-        .with(|eloop| eloop.reregister_io(pollable, interested_ops, sched_idx, sched_io_ops))
+    CURRENT_LOOP.with(|eloop| {
+        eloop.reregister_io(pollable, interested_ops, sched_idx, sched_io_ops)
+    })
 }
 
 #[inline]
 fn deregister_io<P, B>(pollable: B, sched_idx: usize) -> io::Result<()>
-    where P: Pollable,
-          B: Borrow<P>
+where
+    P: Pollable,
+    B: Borrow<P>,
 {
     CURRENT_LOOP.with(|eloop| eloop.deregister_io(pollable, sched_idx))
 }

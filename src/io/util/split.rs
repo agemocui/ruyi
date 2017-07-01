@@ -15,7 +15,8 @@ pub struct WriteHalf<W> {
 
 #[inline]
 pub fn split<T>(t: T) -> (ReadHalf<T>, WriteHalf<T>)
-    where T: AsyncRead + AsyncWrite
+where
+    T: AsyncRead + AsyncWrite,
 {
     let io = Rc::new(UnsafeCell::new(t));
     (ReadHalf { inner: io.clone() }, WriteHalf { inner: io })

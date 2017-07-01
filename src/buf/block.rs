@@ -93,10 +93,12 @@ impl Block {
 
     #[inline]
     pub fn set_capacity(&mut self, capacity: usize) {
-        debug_assert!(capacity >= self.write_pos,
-                      "`capacity` out of bounds: capacity={}, write_pos={}",
-                      capacity,
-                      self.write_pos);
+        debug_assert!(
+            capacity >= self.write_pos,
+            "`capacity` out of bounds: capacity={}, write_pos={}",
+            capacity,
+            self.write_pos
+        );
         self.cap = capacity;
     }
 
@@ -107,10 +109,12 @@ impl Block {
 
     #[inline]
     pub fn set_read_pos(&mut self, read_pos: usize) {
-        debug_assert!(read_pos <= self.write_pos,
-                      "`read_pos` out of bounds: read_pos={}, write_pos={}",
-                      read_pos,
-                      self.write_pos);
+        debug_assert!(
+            read_pos <= self.write_pos,
+            "`read_pos` out of bounds: read_pos={}, write_pos={}",
+            read_pos,
+            self.write_pos
+        );
         self.read_pos = read_pos;
     }
 
@@ -121,11 +125,13 @@ impl Block {
 
     #[inline]
     pub fn set_write_pos(&mut self, write_pos: usize) {
-        debug_assert!(write_pos >= self.read_pos && write_pos <= self.cap,
-                      "`write_pos` out of bounds: read_pos={}, write_pos={}, capacity={}",
-                      self.read_pos,
-                      write_pos,
-                      self.cap);
+        debug_assert!(
+            write_pos >= self.read_pos && write_pos <= self.cap,
+            "`write_pos` out of bounds: read_pos={}, write_pos={}, capacity={}",
+            self.read_pos,
+            write_pos,
+            self.cap
+        );
         self.write_pos = write_pos;
     }
 
@@ -170,11 +176,13 @@ impl Block {
     pub fn split_off(&mut self, at: usize) -> Self {
         let off = self.read_pos() + at;
 
-        debug_assert!(off <= self.write_pos(),
-                      "`at` out of bounds: read_pos={}, at={}, write_pos={}",
-                      self.read_pos,
-                      at,
-                      self.write_pos);
+        debug_assert!(
+            off <= self.write_pos(),
+            "`at` out of bounds: read_pos={}, at={}, write_pos={}",
+            self.read_pos,
+            at,
+            self.write_pos
+        );
 
         let other_ptr = unsafe { self.ptr.offset(off as isize) };
 

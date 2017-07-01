@@ -201,10 +201,11 @@ impl Poller {
 
     #[inline]
     pub fn poll(&self, events: &mut [Event], timeout: Option<Duration>) -> io::Result<usize> {
-        Ok(self.selector
-               .select(events.as_mut_ptr() as *mut sys::Event,
-                       events.len(),
-                       timeout)?)
+        Ok(self.selector.select(
+            events.as_mut_ptr() as *mut sys::Event,
+            events.len(),
+            timeout,
+        )?)
     }
 }
 

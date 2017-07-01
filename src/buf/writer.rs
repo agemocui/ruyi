@@ -22,17 +22,21 @@ impl<'a> Write for Writer<'a> {
                 let appendable = block.appendable();
                 if appendable >= n {
                     unsafe {
-                        ptr::copy_nonoverlapping(src_dst,
-                                                 block.as_mut_ptr().offset(dst_off as isize),
-                                                 n);
+                        ptr::copy_nonoverlapping(
+                            src_dst,
+                            block.as_mut_ptr().offset(dst_off as isize),
+                            n,
+                        );
                     }
                     block.set_write_pos(dst_off + n);
                     return Ok(buf.len());
                 } else {
                     unsafe {
-                        ptr::copy_nonoverlapping(src_dst,
-                                                 block.as_mut_ptr().offset(dst_off as isize),
-                                                 appendable);
+                        ptr::copy_nonoverlapping(
+                            src_dst,
+                            block.as_mut_ptr().offset(dst_off as isize),
+                            appendable,
+                        );
                         src_dst = src_dst.offset(appendable as isize);
                     }
                     n -= appendable;

@@ -93,13 +93,15 @@ impl<T> Inner<T> {
 impl<T> fmt::Debug for Inner<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Channel {{ ")?;
-        write!(f,
-               "cap: {}, front: {:?}, shadow_rear: {}, shadow_front: {}, rear: {:?}",
-               self.cap,
-               self.front,
-               self.shadow_rear.get(),
-               self.shadow_front.get(),
-               self.rear)?;
+        write!(
+            f,
+            "cap: {}, front: {:?}, shadow_rear: {}, shadow_front: {}, rear: {:?}",
+            self.cap,
+            self.front,
+            self.shadow_rear.get(),
+            self.shadow_front.get(),
+            self.rear
+        )?;
         write!(f, " }}")
     }
 }
@@ -110,7 +112,9 @@ impl<T> Drop for Inner<T> {
         while let Some(t) = self.try_pop() {
             drop(t);
         }
-        drop(unsafe { Vec::from_raw_parts(self.buf_ptr, 0, self.alloc_cap) });
+        drop(unsafe {
+            Vec::from_raw_parts(self.buf_ptr, 0, self.alloc_cap)
+        });
     }
 }
 
@@ -249,10 +253,12 @@ impl<T> IntoStream for Receiver<T> {
 
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Receiver {{ inner: {:?}, awakener: {:?} }}",
-               &self.inner,
-               &self.awakener.0)
+        write!(
+            f,
+            "Receiver {{ inner: {:?}, awakener: {:?} }}",
+            &self.inner,
+            &self.awakener.0
+        )
     }
 }
 
