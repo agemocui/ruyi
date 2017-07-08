@@ -12,20 +12,20 @@ pub struct Worker {
     conn_count: Arc<AtomicUsize>,
 }
 
-#[inline]
-pub fn new(
-    tx: SyncSender<TcpStream>,
-    join_handle: JoinHandle<()>,
-    conn_count: Arc<AtomicUsize>,
-) -> Worker {
-    Worker {
-        tx: Some(tx),
-        join_handle: Some(join_handle),
-        conn_count,
-    }
-}
-
 impl Worker {
+    #[inline]
+    pub fn new(
+        tx: SyncSender<TcpStream>,
+        join_handle: JoinHandle<()>,
+        conn_count: Arc<AtomicUsize>,
+    ) -> Self {
+        Worker {
+            tx: Some(tx),
+            join_handle: Some(join_handle),
+            conn_count,
+        }
+    }
+
     #[inline]
     pub fn send(&self, socket: TcpStream) -> Result<(), SendError<TcpStream>> {
         match self.tx.as_ref() {

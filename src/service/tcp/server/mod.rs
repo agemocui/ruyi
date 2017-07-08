@@ -44,15 +44,15 @@ impl Inner {
                 let conn_count = conn_count.clone();
                 let to_handler = to_handler.clone();
                 thread::spawn(move || {
-                    let handler = to_handler.to_handler();
+                    let mut handler = to_handler.to_handler();
                     let handle = rx.into_stream().for_each(|conn| {
-                        let session = session::new(conn, unsafe { mem::transmute(&conn_count) });
+                        let session = Session::new(conn, unsafe { mem::transmute(&conn_count) });
                         Ok(reactor::spawn(handler.handle(session)))
                     });
                     reactor::run(handle).map_err(|e| error!("{}", e)).ok();
                 })
             };
-            let worker = worker::new(tx, join_handle, conn_count);
+            let worker = Worker::new(tx, join_handle, conn_count);
             self.workers.push(worker);
         }
     }
@@ -191,12 +191,12 @@ where
             Err(SendError::Disconnected(..)) => ::unreachable(),
         }
         let join_handle = thread::spawn(move || {
-            let acceptor = rx.into_stream().for_each(|(mut inner, h)| {
+            let server = rx.into_stream().for_each(|(mut inner, h)| {
                 inner.init(h);
                 inner.run();
                 Ok(())
             });
-            reactor::run(acceptor).map_err(|e| error!("{}", e)).ok();
+            reactor::run(server).map_err(|e| error!("{}", e)).ok();
         });
         self.tx = Some(tx);
         self.join_handle = Some(join_handle);

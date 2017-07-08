@@ -4,7 +4,7 @@ use reactor::Task;
 use service::tcp::Session;
 
 pub trait Handler {
-    fn handle(&self, session: Session) -> Task;
+    fn handle(&mut self, session: Session) -> Task;
 }
 
 pub trait ToHandler {

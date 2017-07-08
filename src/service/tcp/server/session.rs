@@ -1,25 +1,33 @@
+use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use buf::ByteBuf;
 use io::{AsyncRead, AsyncWrite};
 use net::TcpStream;
 use nio::{ReadV, WriteV, IoVec};
 
-pub enum Event {
-    Received(ByteBuf),
-    TimedOut,
-    Error,
-}
-
+#[derive(Debug)]
 pub struct Session {
     conn: TcpStream,
     conn_count: &'static AtomicUsize,
 }
 
-#[inline]
-pub fn new(conn: TcpStream, conn_count: &'static AtomicUsize) -> Session {
-    Session { conn, conn_count }
+impl Session {
+    #[inline]
+    pub fn new(conn: TcpStream, conn_count: &'static AtomicUsize) -> Self {
+        Session { conn, conn_count }
+    }
+
+    #[inline]
+    pub fn as_tcp_stream(&self) -> &TcpStream {
+        &self.conn
+    }
+}
+
+impl fmt::Display for Session {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.conn.fmt(f)
+    }
 }
 
 impl io::Read for Session {
