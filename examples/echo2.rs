@@ -8,7 +8,7 @@ extern crate ruyi;
 
 use std::thread;
 
-use futures::Future;
+use futures::{future, Future};
 
 use ruyi::io;
 use ruyi::reactor::{IntoTask, Task};
@@ -18,10 +18,12 @@ use ruyi::service::tcp::{self, Handler, Session};
 struct Echo;
 
 impl Handler for Echo {
-    fn handle(&self, session: Session) -> Task {
-        let (r, w) = io::split(session);
-        io::copy(r, w)
-            .map(drop)
+    fn handle(&mut self, session: Session) -> Task {
+        future::result(session.as_tcp_stream().set_nodelay(true))
+            .and_then(|_| {
+                let (r, w) = io::split(session);
+                io::copy(r, w)
+            })
             .map_err(|e| error!("{}", e))
             .into_task()
     }
