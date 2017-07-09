@@ -118,7 +118,9 @@ impl Awakener {
     #[inline]
     pub fn new() -> io::Result<Self> {
         let res = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
-        Ok(Awakener { event_fd: cvt(res)? })
+        Ok(Awakener {
+            event_fd: cvt(res)?,
+        })
     }
 
     pub fn wakeup(&self) -> io::Result<()> {

@@ -19,7 +19,9 @@ pub struct Timer {
 impl Timer {
     #[inline]
     pub fn new(dur: Duration) -> Self {
-        Timer { state: TimerState::Unscheduled(Instant::now() + dur) }
+        Timer {
+            state: TimerState::Unscheduled(Instant::now() + dur),
+        }
     }
 
     #[inline]
@@ -82,7 +84,9 @@ pub struct PeriodicTimer {
 impl PeriodicTimer {
     #[inline]
     pub fn new(dur: Duration, period: Duration) -> Self {
-        PeriodicTimer { state: PeriodicTimerState::Unscheduled(Instant::now() + dur, period) }
+        PeriodicTimer {
+            state: PeriodicTimerState::Unscheduled(Instant::now() + dur, period),
+        }
     }
 
     #[inline]

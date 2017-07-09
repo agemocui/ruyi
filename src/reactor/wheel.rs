@@ -253,7 +253,9 @@ impl Wheel {
     pub fn new() -> Self {
         let dur = Duration::from_secs(1);
         let inner = Rc::new(UnsafeCell::new(Inner::new()));
-        let wheel = Wheel { inner: inner.clone() };
+        let wheel = Wheel {
+            inner: inner.clone(),
+        };
         super::spawn(
             PeriodicTimer::new(dur, dur)
                 .for_each(move |_| {
@@ -351,7 +353,9 @@ pub struct Sleep {
 
 #[inline]
 pub fn sleep(secs: u64) -> Sleep {
-    Sleep { timer: Timer::new(secs) }
+    Sleep {
+        timer: Timer::new(secs),
+    }
 }
 
 impl Future for Sleep {
@@ -371,7 +375,9 @@ pub struct Timeout {
 impl Timeout {
     #[inline]
     pub fn new(secs: u64) -> Self {
-        Timeout { timer: Timer::new(secs) }
+        Timeout {
+            timer: Timer::new(secs),
+        }
     }
 }
 

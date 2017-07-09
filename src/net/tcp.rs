@@ -31,7 +31,9 @@ pub struct TcpConnector {
 impl TcpStream {
     #[inline]
     fn from(sock: nio::TcpStream) -> Self {
-        TcpStream { inner: PollableIo::new(sock) }
+        TcpStream {
+            inner: PollableIo::new(sock),
+        }
     }
 
     pub fn connect(addr: &SocketAddr) -> TcpConnector {
@@ -187,7 +189,9 @@ impl TcpListener {
 
     #[inline]
     pub fn incoming(self) -> Incoming {
-        Incoming { io: PollableIo::new(self.inner) }
+        Incoming {
+            io: PollableIo::new(self.inner),
+        }
     }
 
     #[inline]

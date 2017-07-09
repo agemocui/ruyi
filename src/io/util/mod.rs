@@ -13,7 +13,9 @@ struct RecvBuf {
 impl RecvBuf {
     #[inline]
     fn new() -> Self {
-        RecvBuf { inner: UnsafeCell::new(ByteBuf::with_capacity(RECV_BUF_SIZE)) }
+        RecvBuf {
+            inner: UnsafeCell::new(ByteBuf::with_capacity(RECV_BUF_SIZE)),
+        }
     }
 
     #[inline]

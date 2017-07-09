@@ -196,7 +196,9 @@ pub struct Poller {
 impl Poller {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        Ok(Poller { selector: sys::Selector::new()? })
+        Ok(Poller {
+            selector: sys::Selector::new()?,
+        })
     }
 
     #[inline]

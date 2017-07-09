@@ -20,7 +20,9 @@ pub fn read<R>(r: R) -> Read<R>
 where
     R: AsyncRead,
 {
-    Read { state: State::Reading { r } }
+    Read {
+        state: State::Reading { r },
+    }
 }
 
 impl<R> Future for Read<R>

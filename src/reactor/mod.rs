@@ -54,7 +54,9 @@ impl Gate {
     #[inline]
     fn new() -> Option<Self> {
         match CURRENT_LOOP.with(|eloop| eloop.enter_gate()) {
-            true => Some(Gate { _marker: PhantomData }),
+            true => Some(Gate {
+                _marker: PhantomData,
+            }),
             false => None,
         }
     }

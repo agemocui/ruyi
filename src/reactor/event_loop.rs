@@ -292,7 +292,9 @@ pub struct EventLoop {
 
 #[inline]
 pub fn new() -> io::Result<EventLoop> {
-    Ok(EventLoop { inner: UnsafeCell::new(Inner::new()?) })
+    Ok(EventLoop {
+        inner: UnsafeCell::new(Inner::new()?),
+    })
 }
 
 impl SchedIo {

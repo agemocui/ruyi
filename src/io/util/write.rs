@@ -20,7 +20,9 @@ pub fn write<W>(w: W, data: ByteBuf) -> Write<W>
 where
     W: AsyncWrite,
 {
-    Write { state: State::Writing { w, data } }
+    Write {
+        state: State::Writing { w, data },
+    }
 }
 
 impl<W> Future for Write<W>

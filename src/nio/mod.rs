@@ -17,12 +17,16 @@ pub struct IoVec {
 impl IoVec {
     #[inline]
     pub fn from_mut(base: &mut u8, len: usize) -> Self {
-        IoVec { inner: sys::IoVec::from_mut(base, len) }
+        IoVec {
+            inner: sys::IoVec::from_mut(base, len),
+        }
     }
 
     #[inline]
     pub fn from(base: &u8, len: usize) -> Self {
-        IoVec { inner: sys::IoVec::from(base, len) }
+        IoVec {
+            inner: sys::IoVec::from(base, len),
+        }
     }
 }
 
