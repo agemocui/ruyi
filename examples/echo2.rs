@@ -19,7 +19,7 @@ struct Echo;
 
 impl Handler for Echo {
     fn handle(&mut self, session: Session) -> Task {
-        future::result(session.as_tcp_stream().set_nodelay(true))
+        future::result(session.set_nodelay(true))
             .and_then(|_| {
                 let (r, w) = io::split(session);
                 io::copy(r, w)

@@ -1,5 +1,6 @@
 use std::fmt;
 use std::io;
+use std::net::{Shutdown, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use io::{AsyncRead, AsyncWrite};
@@ -19,8 +20,38 @@ impl Session {
     }
 
     #[inline]
-    pub fn as_tcp_stream(&self) -> &TcpStream {
-        &self.conn
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.conn.peer_addr()
+    }
+
+    #[inline]
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.conn.local_addr()
+    }
+
+    #[inline]
+    pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        self.conn.shutdown(how)
+    }
+
+    #[inline]
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.conn.set_nodelay(nodelay)
+    }
+
+    #[inline]
+    pub fn nodelay(&self) -> io::Result<bool> {
+        self.conn.nodelay()
+    }
+
+    #[inline]
+    pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
+        self.conn.set_ttl(ttl)
+    }
+
+    #[inline]
+    pub fn ttl(&self) -> io::Result<u32> {
+        self.conn.ttl()
     }
 }
 
