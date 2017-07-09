@@ -45,8 +45,12 @@ impl Inner {
                 let to_handler = to_handler.clone();
                 thread::spawn(move || {
                     let mut handler = to_handler.to_handler();
-                    let handle = rx.into_stream().for_each(|conn| {
-                        let session = Session::new(conn, unsafe { mem::transmute(&conn_count) });
+                    let handle = rx.into_stream().for_each(|(conn, peer_addr)| {
+                        let session = Session::new(
+                            conn,
+                            Some(peer_addr),
+                            unsafe { mem::transmute(&conn_count) },
+                        );
                         Ok(reactor::spawn(handler.handle(session)))
                     });
                     reactor::run(handle).map_err(|e| error!("{}", e)).ok();
@@ -64,14 +68,17 @@ impl Inner {
             .take()
             .unwrap()
             .incoming()
-            .for_each(move |(s, _)| {
+            .for_each(move |(s, a)| {
                 let mut idx = self.idx;
                 loop {
                     let worker: &Worker = unsafe { self.workers.get_unchecked(idx) };
                     idx = (idx + 1) & self.mask;
                     if worker.conn_count() < self.worker_conns {
                         self.idx = idx;
-                        worker.send(s).map_err(|e| error!("{:?}", e)).ok();
+                        worker
+                            .send(s, a)
+                            .map_err(|e| error!("Error dispatch connection from {}: {:?}", a, e))
+                            .ok();
                         worker.inc_conn_count();
                         break;
                     }

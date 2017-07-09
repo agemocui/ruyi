@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::JoinHandle;
+use std::net::SocketAddr;
 
 use channel::err::SendError;
 use channel::spsc::SyncSender;
 use net::TcpStream;
 
 pub struct Worker {
-    tx: Option<SyncSender<TcpStream>>,
+    tx: Option<SyncSender<(TcpStream, SocketAddr)>>,
     join_handle: Option<JoinHandle<()>>,
     conn_count: Arc<AtomicUsize>,
 }
@@ -15,7 +16,7 @@ pub struct Worker {
 impl Worker {
     #[inline]
     pub fn new(
-        tx: SyncSender<TcpStream>,
+        tx: SyncSender<(TcpStream, SocketAddr)>,
         join_handle: JoinHandle<()>,
         conn_count: Arc<AtomicUsize>,
     ) -> Self {
@@ -27,9 +28,13 @@ impl Worker {
     }
 
     #[inline]
-    pub fn send(&self, socket: TcpStream) -> Result<(), SendError<TcpStream>> {
+    pub fn send(
+        &self,
+        conn: TcpStream,
+        peer_addr: SocketAddr,
+    ) -> Result<(), SendError<(TcpStream, SocketAddr)>> {
         match self.tx.as_ref() {
-            Some(tx) => tx.send(socket),
+            Some(tx) => tx.send((conn, peer_addr)),
             None => ::unreachable(),
         }
     }

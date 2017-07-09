@@ -10,18 +10,30 @@ use nio::{ReadV, WriteV, IoVec};
 #[derive(Debug)]
 pub struct Session {
     conn: TcpStream,
+    peer_addr: Option<SocketAddr>,
     conn_count: &'static AtomicUsize,
 }
 
 impl Session {
     #[inline]
-    pub fn new(conn: TcpStream, conn_count: &'static AtomicUsize) -> Self {
-        Session { conn, conn_count }
+    pub fn new(
+        conn: TcpStream,
+        peer_addr: Option<SocketAddr>,
+        conn_count: &'static AtomicUsize,
+    ) -> Self {
+        Session {
+            conn,
+            peer_addr,
+            conn_count,
+        }
     }
 
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.conn.peer_addr()
+        match self.peer_addr {
+            Some(ref addr) => Ok(*addr),
+            None => self.conn.peer_addr(),
+        }
     }
 
     #[inline]
