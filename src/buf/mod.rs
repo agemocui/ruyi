@@ -50,6 +50,16 @@ pub struct ByteBuf {
     growth: usize,
 }
 
+impl From<Vec<u8>> for ByteBuf {
+    fn from(bytes: Vec<u8>) -> Self {
+        ByteBuf {
+            blocks: vec![Block::from(bytes)],
+            idx: 0,
+            growth: 8 * 1024,
+        }
+    }
+}
+
 impl ByteBuf {
     #[inline]
     pub fn new() -> Self {
@@ -645,6 +655,28 @@ impl ByteBuf {
     }
 
     #[inline]
+    fn append_bytes(&mut self, bytes: Vec<u8>) {
+        let temp = match self.last_mut() {
+            Some(last) => {
+                let n = bytes.capacity() - bytes.len();
+                if last.appendable() >= n + 512 {
+                    let len = last.len();
+                    Some(last.split_off(len))
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+        let block = Block::from(bytes);
+        if let Some(tail) = temp {
+            self.blocks.extend_from_slice(&[block, tail]);
+        } else {
+            self.blocks.push(block);
+        }
+    }
+
+    #[inline]
     fn prepend_block(&mut self, min_capacity: usize) {
         let cap = if min_capacity <= self.growth {
             self.growth
@@ -652,6 +684,26 @@ impl ByteBuf {
             min_capacity
         };
         self.blocks.insert(0, Block::for_prependable(cap));
+    }
+
+    #[inline]
+    fn prepend_bytes(&mut self, bytes: Vec<u8>) {
+        let temp = match self.first_mut() {
+            Some(first) => {
+                match first.prependable() >= 512 {
+                    true => Some(first.split_off(0)),
+                    false => None,
+                }
+            }
+            None => None,
+        };
+        let block = Block::from(bytes);
+        if let Some(third) = temp {
+            self.blocks.insert(1, block);
+            self.blocks.insert(2, third);
+        } else {
+            self.blocks.insert(0, block);
+        }
     }
 }
 

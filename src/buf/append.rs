@@ -62,4 +62,8 @@ impl<'a> Appender<'a> {
     pub fn append(&mut self, min_capacity: usize) {
         self.inner.append_block(min_capacity)
     }
+
+    pub fn append_bytes(&mut self, bytes: Vec<u8>) {
+        self.inner.append_bytes(bytes)
+    }
 }

@@ -58,4 +58,9 @@ impl<'a> Prepender<'a> {
     pub fn prepend(&mut self, min_capacity: usize) {
         self.inner.prepend_block(min_capacity)
     }
+
+    #[inline]
+    pub fn prepend_bytes(&mut self, bytes: Vec<u8>) {
+        self.inner.prepend_bytes(bytes)
+    }
 }

@@ -8,17 +8,12 @@ struct Alloc {
     cap: usize,
 }
 
-fn alloc(len: usize) -> Alloc {
-    const MASK: usize = word_len!() - 1;
-    let n = len + MASK;
-    // align = mem::size_of::<usize>()
-    let mut buf = Vec::<usize>::with_capacity(n / word_len!());
-    let ptr = buf.as_mut_ptr() as *mut u8;
+#[inline]
+fn alloc(cap: usize) -> Alloc {
+    let mut buf = Vec::with_capacity(cap);
+    let ptr = buf.as_mut_ptr();
     mem::forget(buf);
-    Alloc {
-        ptr: ptr,
-        cap: n & !MASK,
-    }
+    Alloc { ptr, cap }
 }
 
 impl Drop for Alloc {
@@ -34,6 +29,23 @@ pub(super) struct Block {
     read_pos: usize,
     write_pos: usize,
     shared: Rc<Alloc>,
+}
+
+impl From<Vec<u8>> for Block {
+    fn from(mut bytes: Vec<u8>) -> Self {
+        let ptr = bytes.as_mut_ptr();
+        let cap = bytes.capacity();
+        let len = bytes.len();
+        mem::forget(bytes);
+        let alloc = Alloc { ptr, cap };
+        Block {
+            ptr,
+            cap,
+            read_pos: 0,
+            write_pos: len,
+            shared: Rc::new(alloc),
+        }
+    }
 }
 
 impl Block {
@@ -172,6 +184,8 @@ impl Block {
         unsafe { slice::from_raw_parts(self.ptr_at(from), len) }
     }
 
+    // Splits the block into two at the given index.
+    // Returns a newly allocated Self. self contains bytes [0, at), and the returned Self contains bytes [at, len).
     #[inline]
     pub fn split_off(&mut self, at: usize) -> Self {
         let off = self.read_pos() + at;

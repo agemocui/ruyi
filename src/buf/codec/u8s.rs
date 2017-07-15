@@ -145,6 +145,16 @@ pub fn append(v: &[u8], chain: &mut Appender) -> io::Result<usize> {
     }
 }
 
+pub fn append_vec(v: Vec<u8>, chain: &mut Appender) -> io::Result<usize> {
+    let n = v.len();
+    if n < 64 {
+        append(&v, chain)
+    } else {
+        chain.append_bytes(v);
+        Ok(n)
+    }
+}
+
 pub fn prepend(v: &[u8], chain: &mut Prepender) -> io::Result<usize> {
     let mut ptr_src = v.as_ptr();
     let mut n = v.len();
@@ -171,6 +181,16 @@ pub fn prepend(v: &[u8], chain: &mut Prepender) -> io::Result<usize> {
             block.set_read_pos(0);
         }
         chain.prepend(0);
+    }
+}
+
+pub fn prepend_vec(v: Vec<u8>, chain: &mut Prepender) -> io::Result<usize> {
+    let n = v.len();
+    if n < 64 {
+        prepend(&v, chain)
+    } else {
+        chain.prepend_bytes(v);
+        Ok(n)
     }
 }
 
