@@ -12,7 +12,7 @@ use std::io;
 use std::mem;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
 
 use futures::{Future, Stream};
@@ -46,11 +46,9 @@ impl Inner {
                 thread::spawn(move || {
                     let mut handler = to_handler.to_handler();
                     let handle = rx.into_stream().for_each(|(conn, peer_addr)| {
-                        let session = Session::new(
-                            conn,
-                            Some(peer_addr),
-                            unsafe { mem::transmute(&conn_count) },
-                        );
+                        let session = Session::new(conn, Some(peer_addr), unsafe {
+                            mem::transmute(conn_count.as_ref())
+                        });
                         Ok(reactor::spawn(handler.handle(session)))
                     });
                     reactor::run(handle).map_err(|e| error!("{}", e)).ok();
@@ -64,7 +62,7 @@ impl Inner {
     #[inline]
     fn run(mut self) {
         info!("{} started", self);
-        let accept = self.listener
+        let run = self.listener
             .take()
             .unwrap()
             .incoming()
@@ -91,7 +89,36 @@ impl Inner {
             })
             .map_err(|e| error!("{}", e))
             .into_task();
-        reactor::spawn(accept);
+        reactor::spawn(run);
+    }
+
+    #[inline]
+    fn run_single<H>(mut self, to_handler: Arc<H>)
+    where
+        H: ToHandler + Send + Sync + 'static,
+    {
+        info!("{} started", self);
+        let mut handler = to_handler.to_handler();
+        let conn_count = Box::new(AtomicUsize::new(0));
+        let run = self.listener
+            .take()
+            .unwrap()
+            .incoming()
+            .for_each(move |(conn, peer_addr)| {
+                let n = conn_count.fetch_add(1, Ordering::Relaxed);
+                if self.worker_conns > n {
+                    let session = Session::new(conn, Some(peer_addr), unsafe {
+                        mem::transmute(conn_count.as_ref())
+                    });
+                    reactor::spawn(handler.handle(session));
+                } else {
+                    warn!("{} drops {} not to exceed worker_conns", self, conn);
+                }
+                Ok(())
+            })
+            .map_err(|e| error!("{}", e))
+            .into_task();
+        reactor::spawn(run);
     }
 }
 
@@ -199,8 +226,12 @@ where
         }
         let join_handle = thread::spawn(move || {
             let server = rx.into_stream().for_each(|(mut inner, h)| {
-                inner.init(h);
-                inner.run();
+                if inner.mask == 0 {
+                    inner.run_single(h);
+                } else {
+                    inner.init(h);
+                    inner.run();
+                }
                 Ok(())
             });
             reactor::run(server).map_err(|e| error!("{}", e)).ok();
