@@ -13,7 +13,6 @@ fn read_write() {
         data1.push(i as u8);
     }
     let mut buf = ByteBuf::with_growth(1);
-    // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
@@ -32,8 +31,6 @@ fn read_write() {
 #[test]
 fn codec_u32() {
     let mut buf = ByteBuf::with_growth(1);
-
-    // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
@@ -161,7 +158,6 @@ fn codec_u8() {
 #[test]
 fn codec_u8s() {
     let mut buf = ByteBuf::with_growth(1);
-    // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
@@ -184,7 +180,6 @@ fn codec_u8s() {
 #[test]
 fn codec_f64() {
     let mut buf = ByteBuf::with_growth(1);
-    // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 
@@ -231,7 +226,6 @@ fn codec_f64() {
 fn codec_str_utf8() {
     use std::str::from_utf8;
     let mut buf = ByteBuf::with_growth(1);
-    // min capacity is mem::size_of::<usize>()
     let size = mem::size_of::<usize>() - 1;
     assert_eq!(0, buf.try_reserve_in_head(size));
 

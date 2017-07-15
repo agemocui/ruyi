@@ -81,7 +81,12 @@ impl Inner {
                         break;
                     }
                     if idx == self.idx {
-                        warn!("{} drops {} not to exceed worker_conns", self, s);
+                        warn!(
+                            "{} drops {} to not exceed worker_conns {}",
+                            self,
+                            s,
+                            self.worker_conns
+                        );
                         break;
                     }
                 }
@@ -99,7 +104,7 @@ impl Inner {
     {
         info!("{} started", self);
         let mut handler = to_handler.to_handler();
-        let conn_count = Box::new(AtomicUsize::new(0));
+        let conn_count = AtomicUsize::new(0);
         let run = self.listener
             .take()
             .unwrap()
@@ -107,12 +112,19 @@ impl Inner {
             .for_each(move |(conn, peer_addr)| {
                 let n = conn_count.fetch_add(1, Ordering::Relaxed);
                 if self.worker_conns > n {
-                    let session = Session::new(conn, Some(peer_addr), unsafe {
-                        mem::transmute(conn_count.as_ref())
-                    });
+                    let session = Session::new(
+                        conn,
+                        Some(peer_addr),
+                        unsafe { mem::transmute(&conn_count) },
+                    );
                     reactor::spawn(handler.handle(session));
                 } else {
-                    warn!("{} drops {} not to exceed worker_conns", self, conn);
+                    warn!(
+                        "{} drops {} to not exceed worker_conns {}",
+                        self,
+                        conn,
+                        self.worker_conns
+                    );
                 }
                 Ok(())
             })
