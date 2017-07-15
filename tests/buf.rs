@@ -60,9 +60,7 @@ fn codec_u32() {
 #[test]
 fn codec_varint() {
     let mut buf = ByteBuf::with_capacity(1);
-    // min capacity is mem::size_of::<usize>()
-    let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(1, buf.try_reserve_in_head(2));
 
     let mut n = buf.append(0x23456, u32::varint::append).unwrap();
     assert_eq!(n, 3);
@@ -103,9 +101,7 @@ fn codec_varint() {
 #[test]
 fn codec_u8() {
     let mut buf = ByteBuf::with_capacity(1);
-    // min capacity is mem::size_of::<usize>()
-    let size = mem::size_of::<usize>() - 1;
-    assert_eq!(size, buf.try_reserve_in_head(size));
+    assert_eq!(1, buf.try_reserve_in_head(5));
 
     let mut n = buf.append(51, u8::append).unwrap();
     assert_eq!(n, 1);
@@ -312,7 +308,7 @@ fn ends_with() {
 }
 
 #[test]
-fn find_from_rfind_from() {
+fn find_and_rfind_from() {
     let mut v = Vec::with_capacity(100);
     for i in 0..100 {
         v.push(i);
