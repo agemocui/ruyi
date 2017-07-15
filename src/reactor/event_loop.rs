@@ -214,8 +214,7 @@ impl TimerQueue {
         {
             let timer_task = unsafe { self.timer_tasks.get_unchecked_mut(id) };
             match timer_task.state() {
-                TimerTaskState::Oneshot |
-                TimerTaskState::Periodic(..) => {
+                TimerTaskState::Oneshot | TimerTaskState::Periodic(..) => {
                     timer_task.set_state(TimerTaskState::Cancelled);
                     return true;
                 }

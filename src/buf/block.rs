@@ -185,7 +185,8 @@ impl Block {
     }
 
     // Splits the block into two at the given index.
-    // Returns a newly allocated Self. self contains bytes [0, at), and the returned Self contains bytes [at, len).
+    // Returns a newly allocated Self. self contains bytes [0, at),
+    // and the returned Self contains bytes [at, len).
     #[inline]
     pub fn split_off(&mut self, at: usize) -> Self {
         let off = self.read_pos() + at;
