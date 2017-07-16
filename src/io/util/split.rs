@@ -5,10 +5,12 @@ use std::rc::Rc;
 use io::{AsyncRead, AsyncWrite};
 use nio;
 
+#[derive(Clone)]
 pub struct ReadHalf<R> {
     inner: Rc<UnsafeCell<R>>,
 }
 
+#[derive(Clone)]
 pub struct WriteHalf<W> {
     inner: Rc<UnsafeCell<W>>,
 }
