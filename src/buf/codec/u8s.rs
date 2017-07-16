@@ -145,7 +145,7 @@ pub fn append(v: &[u8], chain: &mut Appender) -> io::Result<usize> {
     }
 }
 
-pub fn append_vec(v: Vec<u8>, chain: &mut Appender) -> io::Result<usize> {
+pub fn append_bytes(v: Vec<u8>, chain: &mut Appender) -> io::Result<usize> {
     let n = v.len();
     if n < 6 * 1024 {
         append(&v, chain)
@@ -184,7 +184,7 @@ pub fn prepend(v: &[u8], chain: &mut Prepender) -> io::Result<usize> {
     }
 }
 
-pub fn prepend_vec(v: Vec<u8>, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend_bytes(v: Vec<u8>, chain: &mut Prepender) -> io::Result<usize> {
     let n = v.len();
     if n < 6 * 1024 {
         prepend(&v, chain)

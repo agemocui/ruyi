@@ -43,7 +43,7 @@ fn bench_append_slice(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_append_vec(b: &mut Bencher) {
+fn bench_append_bytes(b: &mut Bencher) {
     let mut bytes = Vec::with_capacity(BYTES_SIZE);
     unsafe {
         bytes.set_len(BYTES_SIZE);
@@ -51,6 +51,6 @@ fn bench_append_vec(b: &mut Bencher) {
     b.iter(|| for _ in 0..100 {
         let bytes2 = bytes.to_vec();
         let mut buf = ByteBuf::with_capacity(SIZE);
-        buf.append(bytes2, u8s::append_vec).unwrap();
+        buf.append(bytes2, u8s::append_bytes).unwrap();
     });
 }
