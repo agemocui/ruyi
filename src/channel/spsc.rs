@@ -11,7 +11,8 @@ use futures::{Poll, Async};
 
 use super::err::{SendError, TrySendError, RecvError, TryRecvError};
 use nio::{Awakener, Pollable, Poller, Ops, Token};
-use reactor::{IntoStream, PollableIo};
+use stream::IntoStream;
+use reactor::PollableIo;
 
 struct Inner<T> {
     buf_ptr: *mut T,

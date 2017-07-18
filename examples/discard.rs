@@ -10,7 +10,8 @@ use std::thread;
 
 use futures::{Future, Stream};
 
-use ruyi::reactor::{IntoStream, IntoTask, Task};
+use ruyi::stream::IntoStream;
+use ruyi::reactor::{IntoTask, Task};
 use ruyi::service::tcp::{self, Handler, Session};
 
 #[derive(Clone)]

@@ -7,7 +7,8 @@ use std::time::Duration;
 use futures::Stream;
 
 use ruyi::channel::spsc;
-use ruyi::reactor::{self, IntoStream};
+use ruyi::stream::IntoStream;
+use ruyi::reactor;
 
 #[test]
 fn spsc() {

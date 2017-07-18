@@ -8,28 +8,21 @@ mod timer;
 pub use self::timer::{Timer, PeriodicTimer};
 
 mod wheel;
-pub use self::wheel::{Sleep, Timeout};
+
+mod sleep;
+pub use self::sleep::*;
+
+mod timeout;
+pub use self::timeout::*;
 
 use std::borrow::Borrow;
 use std::io;
 use std::marker::PhantomData;
 use std::time::{Instant, Duration};
 
-use futures::{Future, Stream, Sink};
+use futures::Future;
 
-use super::nio::{Pollable, Ops};
-
-pub trait IntoStream {
-    type Stream: Stream;
-
-    fn into_stream(self) -> Self::Stream;
-}
-
-pub trait IntoSink {
-    type Sink: Sink;
-
-    fn into_sink(self) -> Self::Sink;
-}
+use nio::{Pollable, Ops};
 
 pub type Task = Box<Future<Item = (), Error = ()>>;
 
@@ -86,11 +79,6 @@ where
 
 pub fn spawn(f: Task) {
     CURRENT_LOOP.with(|eloop| { eloop.spawn(f); });
-}
-
-#[inline]
-pub fn sleep(secs: u64) -> Sleep {
-    wheel::sleep(secs)
 }
 
 #[inline]
@@ -165,6 +153,11 @@ fn run_expired_task(task: TaskId) -> bool {
 #[inline]
 fn wt_schedule(dur: Duration) -> wheel::TimerId {
     CURRENT_LOOP.with(|eloop| eloop.wt_schedule(dur))
+}
+
+#[inline]
+fn wt_reschedule(dur: Duration, timer_id: wheel::TimerId) {
+    CURRENT_LOOP.with(|eloop| eloop.wt_reschedule(dur, timer_id))
 }
 
 #[inline]

@@ -285,12 +285,12 @@ struct Inner {
     main_task: Option<&'static mut Future<Item = (), Error = ()>>,
 }
 
-pub struct EventLoop {
+pub(super) struct EventLoop {
     inner: UnsafeCell<Inner>,
 }
 
 #[inline]
-pub fn new() -> io::Result<EventLoop> {
+pub(super) fn new() -> io::Result<EventLoop> {
     Ok(EventLoop {
         inner: UnsafeCell::new(Inner::new()?),
     })
@@ -697,6 +697,14 @@ impl Inner {
     }
 
     #[inline]
+    fn wt_reschedule(&mut self, dur: Duration, timer_id: TimerId) {
+        match self.wheel.as_mut() {
+            Some(wheel) => wheel.reschedule(dur, timer_id),
+            _ => ::unreachable(),
+        }
+    }
+
+    #[inline]
     fn wt_cancel(&mut self, timer_id: TimerId) {
         match self.wheel.as_mut() {
             Some(wheel) => wheel.cancel(timer_id),
@@ -823,6 +831,11 @@ impl EventLoop {
     #[inline]
     pub fn wt_schedule(&self, dur: Duration) -> TimerId {
         self.as_mut_inner().wt_schedule(dur)
+    }
+
+    #[inline]
+    pub fn wt_reschedule(&self, dur: Duration, timer_id: TimerId) {
+        self.as_mut_inner().wt_reschedule(dur, timer_id);
     }
 
     #[inline]

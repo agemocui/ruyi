@@ -31,6 +31,9 @@ fn unreachable() -> ! {
     }
 }
 
+mod futures_ext;
+pub use self::futures_ext::*;
+
 pub mod slab;
 pub mod buf;
 pub mod nio;

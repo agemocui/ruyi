@@ -20,7 +20,8 @@ use futures::{Future, Stream};
 use channel::err::SendError;
 use channel::spsc::{self, SyncSender};
 use net::{TcpListener, TcpListenerBuilder};
-use reactor::{self, IntoStream, IntoTask};
+use stream::IntoStream;
+use reactor::{self, IntoTask};
 
 struct Inner {
     name: String,

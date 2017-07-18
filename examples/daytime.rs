@@ -13,7 +13,8 @@ use chrono::prelude::Local;
 use futures::{future, Sink, Future};
 
 use ruyi::buf::ByteBuf;
-use ruyi::reactor::{IntoSink, IntoTask, Task};
+use ruyi::sink::IntoSink;
+use ruyi::reactor::{IntoTask, Task};
 use ruyi::service::tcp::{self, Handler, Session};
 
 #[derive(Clone)]

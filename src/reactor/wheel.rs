@@ -1,9 +1,8 @@
 use std::cell::UnsafeCell;
-use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use futures::{Future, Stream, Poll, Async};
+use futures::{Stream, Poll, Async};
 
 use super::event_loop::TaskId;
 use super::{IntoTask, PeriodicTimer};
@@ -153,16 +152,33 @@ impl Inner {
         timer_id
     }
 
-    // Return true if need reschedule again
-    #[inline]
-    fn reschedule(&mut self, dur: Duration, timer_id: TimerId) -> bool {
+    fn reschedule(&mut self, dur: Duration, exp: Option<Instant>, timer_id: TimerId) {
+        if exp.is_none() {
+            // cancel, then reschedule
+            let (prev, next) = {
+                let entry = self.get_entry(timer_id);
+                (entry.prev, entry.next)
+            };
+            match prev {
+                Token::Entry(prev_timer_id) => self.get_mut_entry(prev_timer_id).next = next,
+                Token::Slot(prev_slot_idx) => self.get_mut_slot(prev_slot_idx).next = next,
+                Token::Nil => ::unreachable(),
+            }
+            match next {
+                Token::Entry(next_timer_id) => self.get_mut_entry(next_timer_id).prev = prev,
+                Token::Slot(next_slot_idx) => self.get_mut_slot(next_slot_idx).prev = prev,
+                Token::Nil => ::unreachable(),
+            }
+        }
         let mut timeout = Self::round_to_secs(dur) as usize;
-        let need_reschedule = if timeout > self.mask {
+        if timeout > self.mask {
             timeout = self.mask;
-            true
-        } else {
-            false
-        };
+            self.get_mut_entry(timer_id).expiration = if exp.is_none() {
+                Some(Instant::now() + dur)
+            } else {
+                exp
+            };
+        }
         let slot_idx = self.effective_slot(self.current_slot.wrapping_add(timeout));
         let prev = self.get_slot(slot_idx).prev;
         {
@@ -177,7 +193,6 @@ impl Inner {
             Token::Nil => ::unreachable(),
         }
         self.get_mut_slot(slot_idx).prev = token;
-        need_reschedule
     }
 
     #[inline]
@@ -220,9 +235,7 @@ impl Inner {
                 if let Some(exp) = expiration {
                     let now = Instant::now();
                     if exp >= now + Duration::from_secs(1) {
-                        if self.reschedule(exp - now, timer_id) {
-                            self.get_mut_entry(timer_id).expiration = Some(exp);
-                        }
+                        self.reschedule(exp - now, Some(exp), timer_id);
                     } else {
                         exit = super::run_expired_task(task);
                     }
@@ -245,7 +258,7 @@ impl Inner {
     }
 }
 
-pub struct Wheel {
+pub(super) struct Wheel {
     inner: Rc<UnsafeCell<Inner>>,
 }
 
@@ -270,6 +283,11 @@ impl Wheel {
     #[inline]
     pub fn schedule(&self, dur: Duration, task: TaskId) -> TimerId {
         self.as_mut_inner().schedule(dur, task)
+    }
+
+    #[inline]
+    pub fn reschedule(&self, dur: Duration, timer_id: TimerId) {
+        self.as_mut_inner().reschedule(dur, None, timer_id)
     }
 
     #[inline]
@@ -302,13 +320,13 @@ enum TimerState {
 }
 
 #[derive(Debug)]
-struct Timer {
+pub(super) struct Timer {
     state: TimerState,
 }
 
 impl Timer {
     #[inline]
-    fn new(secs: u64) -> Self {
+    pub fn new(secs: u64) -> Self {
         let state = if secs == 0 {
             TimerState::Expired
         } else {
@@ -318,7 +336,7 @@ impl Timer {
     }
 
     #[inline]
-    fn poll(&mut self) -> Poll<(), ()> {
+    pub fn poll(&mut self) -> Poll<(), ()> {
         match self.state {
             TimerState::Scheduled(timer_id) => {
                 match super::wt_is_expired(timer_id) {
@@ -335,6 +353,23 @@ impl Timer {
             TimerState::Cancelled => ::unreachable(),
         }
     }
+
+    #[inline]
+    pub fn reschedule(&mut self, secs: u64) -> bool {
+        match self.state {
+            TimerState::Scheduled(timer_id) => {
+                super::wt_reschedule(Duration::from_secs(secs), timer_id);
+                true
+            }
+            TimerState::Unscheduled(dur) => {
+                let timer_id = super::wt_schedule(dur);
+                self.state = TimerState::Scheduled(timer_id);
+                true
+            }
+            TimerState::Expired => false,
+            TimerState::Cancelled => ::unreachable(),
+        }
+    }
 }
 
 impl Drop for Timer {
@@ -342,54 +377,6 @@ impl Drop for Timer {
         if let TimerState::Scheduled(timer_id) = self.state {
             super::wt_cancel(timer_id);
             self.state = TimerState::Cancelled;
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Sleep {
-    timer: Timer,
-}
-
-#[inline]
-pub fn sleep(secs: u64) -> Sleep {
-    Sleep {
-        timer: Timer::new(secs),
-    }
-}
-
-impl Future for Sleep {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.timer.poll()
-    }
-}
-
-#[derive(Debug)]
-pub struct Timeout {
-    timer: Timer,
-}
-
-impl Timeout {
-    #[inline]
-    pub fn new(secs: u64) -> Self {
-        Timeout {
-            timer: Timer::new(secs),
-        }
-    }
-}
-
-impl Future for Timeout {
-    type Item = ();
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.timer.poll() {
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(())) => Err(io::Error::from(io::ErrorKind::TimedOut)),
-            _ => ::unreachable(),
         }
     }
 }

@@ -9,10 +9,11 @@ extern crate ruyi;
 use std::thread;
 
 use futures::{future, Future, Stream};
+use ruyi::stream::IntoStream;
 use ruyi::channel::spsc;
 use ruyi::io;
 use ruyi::net::{TcpStream, TcpListener};
-use ruyi::reactor::{self, IntoStream, IntoTask};
+use ruyi::reactor::{self, IntoTask};
 
 fn echo(sock: TcpStream) {
     // Disable Nagle's algorithm

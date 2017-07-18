@@ -57,7 +57,8 @@ pub mod copy;
 pub mod split;
 
 use futures::{Stream, Sink, Poll, Async, StartSend, AsyncSink};
-use reactor::{IntoStream, IntoSink};
+use sink::IntoSink;
+use stream::IntoStream;
 
 #[derive(Debug)]
 pub struct IStream<R> {
