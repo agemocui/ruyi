@@ -152,31 +152,14 @@ impl Inner {
         timer_id
     }
 
-    fn reschedule(&mut self, dur: Duration, exp: Option<Instant>, timer_id: TimerId) {
-        if exp.is_none() {
-            // cancel, then reschedule
-            let (prev, next) = {
-                let entry = self.get_entry(timer_id);
-                (entry.prev, entry.next)
-            };
-            match prev {
-                Token::Entry(prev_timer_id) => self.get_mut_entry(prev_timer_id).next = next,
-                Token::Slot(prev_slot_idx) => self.get_mut_slot(prev_slot_idx).next = next,
-                Token::Nil => ::unreachable(),
-            }
-            match next {
-                Token::Entry(next_timer_id) => self.get_mut_entry(next_timer_id).prev = prev,
-                Token::Slot(next_slot_idx) => self.get_mut_slot(next_slot_idx).prev = prev,
-                Token::Nil => ::unreachable(),
-            }
-        }
+    #[inline]
+    fn reschedule_internal(&mut self, dur: Duration, exp: Option<Instant>, timer_id: TimerId) {
         let mut timeout = Self::round_to_secs(dur) as usize;
         if timeout > self.mask {
             timeout = self.mask;
-            self.get_mut_entry(timer_id).expiration = if exp.is_none() {
-                Some(Instant::now() + dur)
-            } else {
-                exp
+            self.get_mut_entry(timer_id).expiration = match exp {
+                None => Some(Instant::now() + dur),
+                some => some,
             };
         }
         let slot_idx = self.effective_slot(self.current_slot.wrapping_add(timeout));
@@ -193,6 +176,24 @@ impl Inner {
             Token::Nil => ::unreachable(),
         }
         self.get_mut_slot(slot_idx).prev = token;
+    }
+
+    fn reschedule(&mut self, dur: Duration, timer_id: TimerId) {
+        let (prev, next) = {
+            let entry = self.get_entry(timer_id);
+            (entry.prev, entry.next)
+        };
+        match prev {
+            Token::Entry(prev_timer_id) => self.get_mut_entry(prev_timer_id).next = next,
+            Token::Slot(prev_slot_idx) => self.get_mut_slot(prev_slot_idx).next = next,
+            Token::Nil => ::unreachable(),
+        }
+        match next {
+            Token::Entry(next_timer_id) => self.get_mut_entry(next_timer_id).prev = prev,
+            Token::Slot(next_slot_idx) => self.get_mut_slot(next_slot_idx).prev = prev,
+            Token::Nil => ::unreachable(),
+        }
+        self.reschedule_internal(dur, None, timer_id);
     }
 
     #[inline]
@@ -235,7 +236,7 @@ impl Inner {
                 if let Some(exp) = expiration {
                     let now = Instant::now();
                     if exp >= now + Duration::from_secs(1) {
-                        self.reschedule(exp - now, Some(exp), timer_id);
+                        self.reschedule_internal(exp - now, Some(exp), timer_id);
                     } else {
                         exit = super::run_expired_task(task);
                     }
@@ -287,7 +288,7 @@ impl Wheel {
 
     #[inline]
     pub fn reschedule(&self, dur: Duration, timer_id: TimerId) {
-        self.as_mut_inner().reschedule(dur, None, timer_id)
+        self.as_mut_inner().reschedule(dur, timer_id)
     }
 
     #[inline]
