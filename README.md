@@ -25,10 +25,10 @@ Examples can be found in the `examples` folder in this repository.
 
 ## Features
 
-* `Share-nothing` - One loop per core model; Use SPSC queue to communicate between cores.
+* `Share-nothing` - One loop per core model is recommended. Use SPSC queue to communicate between cores.
 * `Chained-buffer` - Reduces/avoids memory copy as much as possible.
 * `Timer` - Heap based and hashed timing-wheel based.
-* `Graceful Shutdown` - Event loop will not end until all `Gate`s' lifetimes end.
+* `Graceful Shutdown` - `Gate` can be used to ensure that task completes before event loop ends.
 
 ## Platforms
 
