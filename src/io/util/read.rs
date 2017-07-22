@@ -25,40 +25,59 @@ where
     }
 }
 
-impl<R> Future for Read<R>
+impl<R> Read<R>
 where
     R: AsyncRead,
 {
-    type Item = (R, Option<ByteBuf>, usize);
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (data, n) = match self.state {
+    #[inline]
+    fn poll_read(&mut self) -> Poll<Option<(ByteBuf, usize)>, io::Error> {
+        match self.state {
             State::Reading { ref mut r } => {
                 if !r.is_readable() {
                     return Ok(Async::NotReady);
                 }
                 match super::read(r) {
-                    Ok((data, n)) => {
+                    Ok(Some(data)) => {
                         r.need_read()?;
-                        (data, n)
+                        Ok(Async::Ready(Some(data)))
                     }
+                    Ok(None) => Ok(Async::Ready(None)),
                     Err(e) => {
                         match e.kind() {
                             io::ErrorKind::WouldBlock => {
                                 r.need_read()?;
-                                return Ok(Async::NotReady);
+                                Ok(Async::NotReady)
                             }
-                            _ => return Err(e),
+                            _ => Err(e),
                         }
                     }
                 }
             }
-            State::Done => ::unreachable(),
-        };
-        match mem::replace(&mut self.state, State::Done) {
-            State::Reading { r } => Ok(Async::Ready((r, data, n))),
-            State::Done => ::unreachable(),
+            State::Done => panic!("Attempted to poll Read after completion"),
+        }
+    }
+}
+
+impl<R> Future for Read<R>
+where
+    R: AsyncRead,
+{
+    type Item = (Option<(ByteBuf, usize)>, R);
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.poll_read() {
+            Ok(Async::Ready(data)) => {
+                match mem::replace(&mut self.state, State::Done) {
+                    State::Reading { r } => Ok(Async::Ready((data, r))),
+                    State::Done => ::unreachable(),
+                }
+            }
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(e) => {
+                self.state = State::Done;
+                Err(e)
+            }
         }
     }
 }

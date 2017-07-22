@@ -1,16 +1,17 @@
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::io;
 use std::rc::Rc;
 
 use io::{AsyncRead, AsyncWrite};
 use nio;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ReadHalf<R> {
     inner: Rc<UnsafeCell<R>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct WriteHalf<W> {
     inner: Rc<UnsafeCell<W>>,
 }
@@ -26,15 +27,39 @@ where
 
 impl<R> ReadHalf<R> {
     #[inline]
-    fn get_mut(&self) -> &mut R {
+    pub fn get_ref(&self) -> &R {
+        unsafe { &*(&self.inner).get() }
+    }
+
+    #[inline]
+    pub fn get_mut(&self) -> &mut R {
         unsafe { &mut *(&self.inner).get() }
     }
 }
 
 impl<W> WriteHalf<W> {
     #[inline]
-    fn get_mut(&self) -> &mut W {
+    pub fn get_ref(&self) -> &W {
+        unsafe { &*(&self.inner).get() }
+    }
+
+    #[inline]
+    pub fn get_mut(&self) -> &mut W {
         unsafe { &mut *(&self.inner).get() }
+    }
+}
+
+impl<R: fmt::Display> fmt::Display for ReadHalf<R> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self.get_ref(), f)
+    }
+}
+
+impl<W: fmt::Display> fmt::Display for WriteHalf<W> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self.get_ref(), f)
     }
 }
 

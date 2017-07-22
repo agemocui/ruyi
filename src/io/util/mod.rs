@@ -39,15 +39,20 @@ impl RecvBuf {
 
 thread_local!(static RECV_BUF: RecvBuf = RecvBuf::new());
 
-fn read<R>(r: &mut R) -> io::Result<(Option<ByteBuf>, usize)>
+#[inline]
+fn read<R>(r: &mut R) -> io::Result<Option<(ByteBuf, usize)>>
 where
     R: AsyncRead,
 {
     RECV_BUF.with(|recv_buf| {
         let buf = recv_buf.get_mut();
         let n = buf.read_in(r)?;
-        let data = if n > 0 { Some(buf.drain_to(n)?) } else { None };
-        Ok((data, n))
+        let data = if n > 0 {
+            Some((buf.drain_to(n)?, n))
+        } else {
+            None
+        };
+        Ok(data)
     })
 }
 
@@ -62,41 +67,81 @@ use stream::IntoStream;
 
 #[derive(Debug)]
 pub struct IStream<R> {
-    r: R,
+    r: Option<R>,
     would_block: bool,
 }
 
-impl<R: AsyncRead> Stream for IStream<R> {
+impl<R> IStream<R>
+where
+    R: AsyncRead,
+{
+    #[inline]
+    pub fn get_ref(&self) -> &R {
+        self.r
+            .as_ref()
+            .expect("Attempted IStream::get_ref after completion")
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut R {
+        self.r
+            .as_mut()
+            .expect("Attempted IStream::get_mut after completion")
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> R {
+        self.r
+            .expect("Attempted IStream::into_inner after completion")
+    }
+
+    #[inline]
+    fn poll_read(&mut self) -> Poll<Option<ByteBuf>, io::Error> {
+        match self.r {
+            Some(ref mut r) => {
+                if self.would_block {
+                    self.would_block = false;
+                    r.need_read()?;
+                    return Ok(Async::NotReady);
+                }
+                if !r.is_readable() {
+                    return Ok(Async::NotReady);
+                }
+                match read(r) {
+                    Ok(Some((data, _))) => {
+                        self.would_block = true;
+                        Ok(Async::Ready(Some(data)))
+                    }
+                    Ok(None) => Ok(Async::Ready(None)),
+                    Err(e) => {
+                        match e.kind() {
+                            io::ErrorKind::WouldBlock => {
+                                r.need_read()?;
+                                Ok(Async::NotReady)
+                            }
+                            _ => Err(e),
+                        }
+                    }
+                }
+            }
+            None => panic!("Attempted to poll IStream after completion"),
+        }
+    }
+}
+
+impl<R> Stream for IStream<R>
+where
+    R: AsyncRead,
+{
     type Item = ByteBuf;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if self.would_block {
-            self.would_block = false;
-            self.r.need_read()?;
-            return Ok(Async::NotReady);
-        }
-        if !self.r.is_readable() {
-            return Ok(Async::NotReady);
-        }
-        match read(&mut self.r) {
-            Ok((data, _)) => {
-                match data {
-                    Some(bytes) => {
-                        self.would_block = true;
-                        Ok(Async::Ready(Some(bytes)))
-                    }
-                    None => Ok(Async::Ready(None)),
-                }
-            }
+        match self.poll_read() {
+            Ok(o) => Ok(o),
             Err(e) => {
-                match e.kind() {
-                    io::ErrorKind::WouldBlock => {
-                        self.r.need_read()?;
-                        Ok(Async::NotReady)
-                    }
-                    _ => Err(e),
-                }
+                self.r = None;
+                Err(e)
             }
         }
     }
@@ -104,11 +149,70 @@ impl<R: AsyncRead> Stream for IStream<R> {
 
 #[derive(Debug)]
 pub struct OStream<W> {
-    w: W,
+    w: Option<W>,
     buf: Option<ByteBuf>,
 }
 
-impl<W: AsyncWrite> Sink for OStream<W> {
+impl<W> OStream<W>
+where
+    W: AsyncWrite,
+{
+    #[inline]
+    pub fn get_ref(&self) -> &W {
+        self.w
+            .as_ref()
+            .expect("Attempted OStream::get_ref after completion")
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut W {
+        self.w
+            .as_mut()
+            .expect("Attempted OStream::get_mut after completion")
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> W {
+        self.w
+            .expect("Attempted OStream::into_inner after completion")
+    }
+
+    #[inline]
+    fn poll_write(&mut self) -> Poll<(), io::Error> {
+        match self.w {
+            Some(ref mut w) => {
+                if w.is_writable() {
+                    if let Some(ref mut data) = self.buf {
+                        if let Err(e) = data.write_out(w) {
+                            return match e.kind() {
+                                io::ErrorKind::WouldBlock => {
+                                    w.need_write()?;
+                                    Ok(Async::NotReady)
+                                }
+                                _ => Err(e),
+                            };
+                        }
+                        if !data.is_empty() {
+                            w.need_write()?;
+                            data.compact();
+                            return Ok(Async::NotReady);
+                        }
+                    }
+                    w.no_need_write()?;
+                    Ok(Async::Ready(()))
+                } else {
+                    Ok(Async::NotReady)
+                }
+            }
+            None => panic!("Attempted to poll OStream after completion"),
+        }
+    }
+}
+
+impl<W> Sink for OStream<W>
+where
+    W: AsyncWrite,
+{
     type SinkItem = ByteBuf;
     type SinkError = io::Error;
 
@@ -126,20 +230,17 @@ impl<W: AsyncWrite> Sink for OStream<W> {
     }
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        if !self.w.is_writable() {
-            return Ok(Async::NotReady);
-        }
-        if let Some(mut buf) = self.buf.take() {
-            buf.write_out(&mut self.w)?;
-            if !buf.is_empty() {
-                self.w.need_write()?;
-                buf.compact();
-                self.buf = Some(buf);
-                return Ok(Async::NotReady);
+        match self.poll_write() {
+            Ok(Async::Ready(())) => {
+                self.buf = None;
+                Ok(Async::Ready(()))
+            }
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(e) => {
+                self.w = None;
+                Err(e)
             }
         }
-        self.w.no_need_write()?;
-        return Ok(Async::Ready(()));
     }
 
     #[inline]
@@ -154,7 +255,7 @@ impl<R: AsyncRead> IntoStream for R {
     #[inline]
     fn into_stream(self) -> Self::Stream {
         IStream {
-            r: self,
+            r: Some(self),
             would_block: false,
         }
     }
@@ -165,6 +266,9 @@ impl<W: AsyncWrite> IntoSink for W {
 
     #[inline]
     fn into_sink(self) -> Self::Sink {
-        OStream { w: self, buf: None }
+        OStream {
+            w: Some(self),
+            buf: None,
+        }
     }
 }
