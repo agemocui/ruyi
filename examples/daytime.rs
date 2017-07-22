@@ -24,8 +24,7 @@ impl Handler for DayTime {
     fn handle(&mut self, session: Session) -> Task {
         future::result(session.set_nodelay(true))
             .and_then(|_| {
-                let mut time = Local::now().to_rfc2822();
-                time.push_str("\r\n");
+                let time = Local::now().to_rfc2822() + "\r\n";
                 let response = ByteBuf::from(time.into_bytes());
                 session.into_sink().send(response)
             })
