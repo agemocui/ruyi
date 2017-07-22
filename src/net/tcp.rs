@@ -315,25 +315,22 @@ impl Future for TcpConnector {
                 Ok(Async::NotReady)
             }
             ConnectState::Finishing(mut sock) => {
-                match sock.is_writable() {
-                    true => {
-                        match sock.take_error()? {
-                            None => {
-                                sock.no_need_write()?;
-                                Ok(Async::Ready(sock))
-                            }
-                            Some(e) => Err(e),
+                if sock.is_writable() {
+                    match sock.take_error()? {
+                        None => {
+                            sock.no_need_write()?;
+                            Ok(Async::Ready(sock))
                         }
+                        Some(e) => Err(e),
                     }
-                    false => {
-                        self.state = ConnectState::Finishing(sock);
-                        Ok(Async::NotReady)
-                    }
+                } else {
+                    self.state = ConnectState::Finishing(sock);
+                    Ok(Async::NotReady)
                 }
             }
             ConnectState::Connected(sock) => Ok(Async::Ready(sock)),
             ConnectState::Error(e) => Err(e),
-            _ => ::unreachable(),
+            _ => panic!("Attempted to poll TcpConnector after completion"),
         }
     }
 }
