@@ -129,7 +129,7 @@ impl Awakener {
         if res == 8 {
             cvt(res).map(drop)
         } else {
-            error!("Error to write 8 bytes to {:?}, writen: {}", self, res);
+            error!("Error to write 8 bytes to {:?}, written: {}", self, res);
             Ok(())
         }
     }
