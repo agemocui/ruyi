@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::io;
 
 use buf::{ByteBuf, Appender};
+use nio::ReadV;
 use io::{AsyncRead, AsyncWrite};
 
 const RECV_BUF_SIZE: usize = 128 * 1024;
@@ -42,7 +43,7 @@ thread_local!(static RECV_BUF: RecvBuf = RecvBuf::new());
 #[inline]
 fn read<R>(r: &mut R) -> io::Result<Option<(ByteBuf, usize)>>
 where
-    R: AsyncRead,
+    R: io::Read + ReadV,
 {
     RECV_BUF.with(|recv_buf| {
         let buf = recv_buf.get_mut();
