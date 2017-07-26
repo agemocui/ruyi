@@ -1,11 +1,11 @@
 mod event_loop;
-use self::event_loop::{TaskId, TimerTaskId, EventLoop};
+use self::event_loop::{EventLoop, TaskId, TimerTaskId};
 
 mod pollable_io;
 pub use self::pollable_io::PollableIo;
 
 mod timer;
-pub use self::timer::{Timer, PeriodicTimer};
+pub use self::timer::{PeriodicTimer, Timer};
 
 mod wheel;
 
@@ -18,11 +18,11 @@ pub use self::timeout::*;
 use std::borrow::Borrow;
 use std::io;
 use std::marker::PhantomData;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use futures::Future;
 
-use nio::{Pollable, Ops};
+use nio::{Ops, Pollable};
 
 pub type Task = Box<Future<Item = (), Error = ()>>;
 

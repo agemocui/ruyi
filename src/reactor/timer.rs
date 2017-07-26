@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use futures::{Future, Stream, Async, Poll};
+use futures::{Async, Future, Poll, Stream};
 
 use super::event_loop::TimerTaskId;
 

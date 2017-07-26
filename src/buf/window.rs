@@ -1,6 +1,6 @@
 use std::ptr;
 
-use super::{ByteBuf, Block};
+use super::{Block, ByteBuf};
 
 enum Off {
     Left(usize),
@@ -201,13 +201,11 @@ impl<'a> Iterator for Windows<'a> {
         self.len -= 1;
         loop {
             match self.blocks.first() {
-                Some(block) => {
-                    if block.len() > self.off {
-                        let window = Window::from_left(self.blocks, self.off, self.size);
-                        self.off += 1;
-                        return Some(window);
-                    }
-                }
+                Some(block) => if block.len() > self.off {
+                    let window = Window::from_left(self.blocks, self.off, self.size);
+                    self.off += 1;
+                    return Some(window);
+                },
                 None => ::unreachable(),
             }
             self.blocks = &self.blocks[1..];
@@ -248,13 +246,11 @@ impl<'a> DoubleEndedIterator for Windows<'a> {
         self.len -= 1;
         loop {
             match self.blocks.last() {
-                Some(block) => {
-                    if block.len() > self.roff {
-                        let window = Window::from_right(self.blocks, self.roff, self.size);
-                        self.roff += 1;
-                        return Some(window);
-                    }
-                }
+                Some(block) => if block.len() > self.roff {
+                    let window = Window::from_right(self.blocks, self.roff, self.size);
+                    self.roff += 1;
+                    return Some(window);
+                },
                 None => ::unreachable(),
             }
             self.blocks = &self.blocks[..self.blocks.len() - 1];

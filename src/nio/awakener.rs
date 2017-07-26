@@ -3,7 +3,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::sys;
-use super::poll::{Ops, Token, Pollable, Poller};
+use super::poll::{Ops, Pollable, Poller, Token};
 
 pub struct Awakener {
     inner: sys::Awakener,
@@ -40,7 +40,8 @@ impl Awakener {
 
     pub fn wakeup_m(&self) -> io::Result<()> {
         match self.need_wakeup
-            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        {
             Ok(_) => self.inner.wakeup(),
             _ => Ok(()),
         }

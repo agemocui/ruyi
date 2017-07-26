@@ -1,6 +1,6 @@
 use std::io;
 
-use nio::{Pollable, Ops};
+use nio::{Ops, Pollable};
 
 #[derive(Debug)]
 pub struct PollableIo<P: Pollable> {
@@ -55,24 +55,20 @@ impl<P: Pollable> PollableIo<P> {
 
     pub fn is_readable(&self) -> bool {
         match self.interested_ops().contains_read() {
-            true => {
-                match self.sched_idx {
-                    Some(idx) => super::is_readable(idx),
-                    None => true,
-                }
-            }
+            true => match self.sched_idx {
+                Some(idx) => super::is_readable(idx),
+                None => true,
+            },
             false => true,
         }
     }
 
     pub fn is_writable(&self) -> bool {
         match self.interested_ops().contains_write() {
-            true => {
-                match self.sched_idx {
-                    Some(idx) => super::is_writable(idx),
-                    None => true,
-                }
-            }
+            true => match self.sched_idx {
+                Some(idx) => super::is_writable(idx),
+                None => true,
+            },
             false => true,
         }
     }

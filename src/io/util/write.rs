@@ -1,7 +1,7 @@
 use std::io;
 use std::mem;
 
-use futures::{Poll, Future, Async};
+use futures::{Async, Future, Poll};
 
 use io::AsyncWrite;
 use buf::ByteBuf;
@@ -48,15 +48,13 @@ where
                         }
                         Ok(Some(n))
                     }
-                    Err(e) => {
-                        match e.kind() {
-                            io::ErrorKind::WouldBlock => {
-                                w.need_write()?;
-                                return Ok(None);
-                            }
-                            _ => return Err(e),
+                    Err(e) => match e.kind() {
+                        io::ErrorKind::WouldBlock => {
+                            w.need_write()?;
+                            return Ok(None);
                         }
-                    }
+                        _ => return Err(e),
+                    },
                 }
             }
             State::Done => panic!("Attempted to poll Write after completion"),
@@ -73,12 +71,10 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_write() {
-            Ok(Some(n)) => {
-                match mem::replace(&mut self.state, State::Done) {
-                    State::Writing { w, data } => Ok(Async::Ready((data, n, w))),
-                    State::Done => ::unreachable(),
-                }
-            }
+            Ok(Some(n)) => match mem::replace(&mut self.state, State::Done) {
+                State::Writing { w, data } => Ok(Async::Ready((data, n, w))),
+                State::Done => ::unreachable(),
+            },
             Ok(None) => Ok(Async::NotReady),
             Err(e) => {
                 self.state = State::Done;

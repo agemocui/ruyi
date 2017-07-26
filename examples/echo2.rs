@@ -37,7 +37,8 @@ fn main() {
     match tcp::Server::with_handler(Echo)
         .port(10007)
         .num_of_workers(n)
-        .start() {
+        .start()
+    {
         Ok(()) => thread::park(),
         Err(e) => error!("{}", e),
     }

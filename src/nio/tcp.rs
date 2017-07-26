@@ -1,9 +1,9 @@
 use std::fmt;
 use std::io;
-use std::net::{self, SocketAddr, Shutdown};
+use std::net::{self, Shutdown, SocketAddr};
 
 use super::{sys, IoVec, ReadV, WriteV};
-use super::poll::{Ops, Token, Pollable, Poller};
+use super::poll::{Ops, Pollable, Poller, Token};
 
 pub struct TcpStream {
     inner: net::TcpStream,

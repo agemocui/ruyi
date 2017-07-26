@@ -1,7 +1,7 @@
 use std::io;
 use std::mem;
 
-use futures::{Poll, Future, Async};
+use futures::{Async, Future, Poll};
 
 use io::AsyncRead;
 use buf::ByteBuf;
@@ -42,15 +42,13 @@ where
                         Ok(Async::Ready(Some(data)))
                     }
                     Ok(None) => Ok(Async::Ready(None)),
-                    Err(e) => {
-                        match e.kind() {
-                            io::ErrorKind::WouldBlock => {
-                                r.need_read()?;
-                                Ok(Async::NotReady)
-                            }
-                            _ => Err(e),
+                    Err(e) => match e.kind() {
+                        io::ErrorKind::WouldBlock => {
+                            r.need_read()?;
+                            Ok(Async::NotReady)
                         }
-                    }
+                        _ => Err(e),
+                    },
                 }
             }
             State::Done => panic!("Attempted to poll Read after completion"),
@@ -67,12 +65,10 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_read() {
-            Ok(Async::Ready(data)) => {
-                match mem::replace(&mut self.state, State::Done) {
-                    State::Reading { r } => Ok(Async::Ready((data, r))),
-                    State::Done => ::unreachable(),
-                }
-            }
+            Ok(Async::Ready(data)) => match mem::replace(&mut self.state, State::Done) {
+                State::Reading { r } => Ok(Async::Ready((data, r))),
+                State::Done => ::unreachable(),
+            },
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(e) => {
                 self.state = State::Done;

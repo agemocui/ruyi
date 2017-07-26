@@ -4,7 +4,7 @@ use std::ptr;
 
 use super::F32_SIZE;
 use super::super::reverse;
-use super::super::super::{ReadIter, GetIter, SetIter, Appender, Prepender};
+use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
 
 pub fn read(chain: &mut ReadIter) -> io::Result<f32> {
     let mut v: f32 = unsafe { mem::uninitialized() };

@@ -1,7 +1,7 @@
 use std::io::{self, Error, ErrorKind};
 use std::ptr;
 
-use super::super::{ReadIter, GetIter, SetIter, Appender, Prepender};
+use super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
 
 #[derive(Copy, Clone)]
 pub struct Filling {

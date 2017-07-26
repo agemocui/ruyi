@@ -1,6 +1,6 @@
 use std::io::{self, Error, ErrorKind};
 
-use super::super::{ReadIter, GetIter, SetIter, Appender, Prepender};
+use super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
 
 const U8_SIZE: usize = 1;
 

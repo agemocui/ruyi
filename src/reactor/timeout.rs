@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-use futures::{Future, Poll, Async, Stream};
+use futures::{Async, Future, Poll, Stream};
 
 use future;
 use stream;
@@ -118,18 +118,16 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.future_mut().poll() {
-            Ok(Async::NotReady) => {
-                match self.timer.poll() {
-                    Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Ok(Async::Ready(())) => {
+            Ok(Async::NotReady) => match self.timer.poll() {
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Ok(Async::Ready(())) => {
                         match self.future.take() {
                             Some(f) => Err(TimeoutError::new(f).into()),
                             None => ::unreachable(),
                         }
                     }
-                    _ => ::unreachable(),
-                }
-            }
+                _ => ::unreachable(),
+            },
             ready => ready,
         }
     }
@@ -189,29 +187,23 @@ where
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         match self.stream_mut().poll() {
-            Ok(Async::NotReady) => {
-                match self.timer.poll() {
-                    Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Ok(Async::Ready(())) => {
+            Ok(Async::NotReady) => match self.timer.poll() {
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Ok(Async::Ready(())) => {
                         match self.stream.take() {
                             Some(s) => Err(TimeoutError::new(s).into()),
                             None => ::unreachable(),
                         }
                     }
-                    _ => ::unreachable(),
-                }
-            }
-            Ok(Async::Ready(Some(v))) => {
-                match self.timer.reschedule(self.secs) {
-                    true => Ok(Async::Ready(Some(v))),
-                    false => {
-                        match self.stream.take() {
-                            Some(s) => Err(TimeoutError::new(s).into()),
-                            None => ::unreachable(),
-                        }
-                    }
-                }
-            }
+                _ => ::unreachable(),
+            },
+            Ok(Async::Ready(Some(v))) => match self.timer.reschedule(self.secs) {
+                true => Ok(Async::Ready(Some(v))),
+                false => match self.stream.take() {
+                    Some(s) => Err(TimeoutError::new(s).into()),
+                    None => ::unreachable(),
+                },
+            },
             ready_none => ready_none,
         }
     }

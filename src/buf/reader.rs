@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 use std::ptr;
 
-use super::{read, ReadBlock, ByteBuf};
+use super::{read, ByteBuf, ReadBlock};
 
 pub struct Reader<'a> {
     inner: &'a mut ByteBuf,

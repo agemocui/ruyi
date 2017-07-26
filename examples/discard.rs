@@ -38,7 +38,8 @@ fn main() {
     match tcp::Server::with_handler(Discard)
         .port(10009)
         .num_of_workers(n)
-        .start() {
+        .start()
+    {
         Ok(()) => thread::park(),
         Err(e) => error!("{}", e),
     }

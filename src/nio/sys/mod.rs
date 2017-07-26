@@ -14,8 +14,8 @@ fn into_millis(dur: Duration) -> u64 {
 mod unix;
 
 #[cfg(unix)]
-pub use self::unix::{Event, IoVec, Awakener, Selector, OP_READ, OP_WRITE};
-pub use self::unix::tcp::{accept, connect, new_v4, new_v6, readv, writev};
+pub use self::unix::{Awakener, Event, IoVec, Selector, OP_READ, OP_WRITE};
+pub use self::unix::tcp::{accept, connect, readv, writev, new_v4, new_v6};
 
 #[cfg(windows)]
 mod windows;

@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::mem;
 
 use ruyi::buf::ByteBuf;
-use ruyi::buf::codec::{u8, u8s, u32, f64};
+use ruyi::buf::codec::{f64, u32, u8, u8s};
 
 #[test]
 fn read_write() {

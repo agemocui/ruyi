@@ -1,7 +1,3 @@
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-
 extern crate getopts;
 extern crate num_cpus;
 extern crate futures;
@@ -10,14 +6,14 @@ extern crate ruyi;
 use std::env;
 use std::io;
 use std::mem;
-use std::net::{SocketAddr, Shutdown};
+use std::net::{Shutdown, SocketAddr};
 use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-use futures::{future, stream, Future, Stream, Sink};
+use futures::{future, stream, Future, Sink, Stream};
 
 use ruyi::buf::ByteBuf;
 use ruyi::channel::spsc;
@@ -227,13 +223,13 @@ fn ping_pong(
                 )
             })
         })
-        .map_err(|e| error!("{}", e))
+        .map_err(|e| eprintln!("{}", e))
         .into_task()
 }
 
 #[inline]
 fn run(conf: Conf) {
-    info!("Pingpong client start: {:?}", conf);
+    println!("Pingpong client start: {:?}", conf);
     let sleep = reactor::sleep(conf.seconds);
     let mut threads = Vec::with_capacity(conf.threads);
     let total_msgs = Arc::new(AtomicUsize::new(0));
@@ -271,27 +267,25 @@ fn run(conf: Conf) {
     }
     let bytes = total_bytes.as_ref().load(Ordering::Relaxed);
     let msgs = total_msgs.as_ref().load(Ordering::Relaxed);
-    info!("Total bytes read: {}", bytes);
-    info!("Total messages read: {}", msgs);
-    info!("Average message size: {}", bytes as f64 / msgs as f64);
-    info!(
+    println!("Total bytes read: {}", bytes);
+    println!("Total messages read: {}", msgs);
+    println!("Average message size: {}", bytes as f64 / msgs as f64);
+    println!(
         "Throughput: {} MiB/s",
         bytes as f64 / (conf.seconds * 1024 * 1024) as f64
     );
-    info!("Pingpong client end");
+    println!("Pingpong client end");
 }
 
 #[inline]
 fn exit(err_msg: &str) -> ! {
     if !err_msg.is_empty() {
-        info!("{}", err_msg);
+        eprintln!("{}", err_msg);
     }
     process::exit(1)
 }
 
 fn main() {
-    env_logger::init().unwrap();
-
     match process_command_line() {
         Ok(Some(conf)) => run(conf),
         Ok(None) => {}

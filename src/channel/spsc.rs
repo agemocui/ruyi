@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::stream::Stream;
-use futures::{Poll, Async};
+use futures::{Async, Poll};
 
-use super::err::{SendError, TrySendError, RecvError, TryRecvError};
-use nio::{Awakener, Pollable, Poller, Ops, Token};
+use super::err::{RecvError, SendError, TryRecvError, TrySendError};
+use nio::{Awakener, Ops, Pollable, Poller, Token};
 use stream::IntoStream;
 use reactor::PollableIo;
 

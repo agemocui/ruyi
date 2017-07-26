@@ -10,7 +10,7 @@ extern crate ruyi;
 use std::thread;
 
 use chrono::prelude::Local;
-use futures::{future, Sink, Future};
+use futures::{future, Future, Sink};
 
 use ruyi::buf::ByteBuf;
 use ruyi::sink::IntoSink;
@@ -41,7 +41,8 @@ fn main() {
     match tcp::Server::with_handler(DayTime)
         .port(10013)
         .num_of_workers(n)
-        .start() {
+        .start()
+    {
         Ok(()) => thread::park(),
         Err(e) => error!("{}", e),
     }

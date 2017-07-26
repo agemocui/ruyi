@@ -8,12 +8,12 @@ use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::{Duration, Instant};
 
-use futures::{Future, Poll, Async};
+use futures::{Async, Future, Poll};
 
 use super::Task;
 use super::wheel::{TimerId, Wheel};
 use slab::{self, Slab};
-use nio::{Event, Poller, Pollable, Ops, Token};
+use nio::{Event, Ops, Pollable, Poller, Token};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimerTaskId {
@@ -478,12 +478,10 @@ impl Inner {
 
     fn run_main_task(&mut self) -> bool {
         match self.main_task {
-            Some(ref mut main_task) => {
-                match main_task.poll() {
-                    Ok(Async::NotReady) => return false,
-                    _ => {}
-                }
-            }
+            Some(ref mut main_task) => match main_task.poll() {
+                Ok(Async::NotReady) => return false,
+                _ => {}
+            },
             _ => ::unreachable(),
         }
         self.main_task = None;
@@ -551,11 +549,9 @@ impl Inner {
     fn poll_timer_queue(&mut self) -> Result<Option<Duration>, ()> {
         loop {
             match self.timer_queue.poll() {
-                PollResult::Expire(exp) => {
-                    if self.run_timer_task(exp) {
-                        return Err(());
-                    }
-                }
+                PollResult::Expire(exp) => if self.run_timer_task(exp) {
+                    return Err(());
+                },
                 PollResult::Wait(wait) => return Ok(wait),
             }
         }
@@ -608,7 +604,8 @@ impl Inner {
         let sched_idx = self.sched_ios.insert(sched_io);
         match pollable
             .borrow()
-            .register(&self.poller, interested_ops, Token::from(sched_idx)) {
+            .register(&self.poller, interested_ops, Token::from(sched_idx))
+        {
             Ok(()) => Ok(sched_idx),
             Err(e) => {
                 self.sched_ios.remove(sched_idx);

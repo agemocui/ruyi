@@ -29,11 +29,9 @@ impl<'a> Iterator for Bytes<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.iter_u8.as_mut() {
-                Some(iter_u8) => {
-                    if let Some(b) = iter_u8.next() {
-                        return Some(*b);
-                    }
-                }
+                Some(iter_u8) => if let Some(b) = iter_u8.next() {
+                    return Some(*b);
+                },
                 None => return None,
             }
             self.iter_u8 = match self.iter_inner.next() {

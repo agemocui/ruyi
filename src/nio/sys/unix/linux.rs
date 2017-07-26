@@ -1,5 +1,5 @@
 use std::io;
-use std::os::unix::io::{RawFd, AsRawFd};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::time::Duration;
 use std::ptr;
 

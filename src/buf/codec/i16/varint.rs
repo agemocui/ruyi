@@ -1,7 +1,7 @@
 use std::io::{self, Error};
 
 use super::super::u16;
-use super::super::super::{ReadIter, GetIter, SetIter, Appender, Prepender};
+use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
 
 #[inline]
 pub fn read(chain: &mut ReadIter) -> io::Result<i16> {

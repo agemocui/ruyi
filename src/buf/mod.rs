@@ -35,7 +35,7 @@ pub use self::writer::Writer;
 
 use std::cmp::Ordering;
 use std::mem;
-use std::io::{Result, Read, Write, Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::ptr;
 use std::slice;
 
@@ -162,22 +162,20 @@ impl ByteBuf {
 
     pub fn try_reserve_in_head(&mut self, len: usize) -> usize {
         match self.first_mut() {
-            Some(first) => {
-                if first.is_empty() {
-                    let reserved = if len > first.capacity() {
-                        first.capacity()
-                    } else {
-                        len
-                    };
-
-                    first.set_read_pos(0);
-                    first.set_write_pos(reserved);
-                    first.set_read_pos(reserved);
-                    reserved
+            Some(first) => if first.is_empty() {
+                let reserved = if len > first.capacity() {
+                    first.capacity()
                 } else {
-                    first.read_pos()
-                }
-            }
+                    len
+                };
+
+                first.set_read_pos(0);
+                first.set_write_pos(reserved);
+                first.set_read_pos(reserved);
+                reserved
+            } else {
+                first.read_pos()
+            },
             None => 0,
         }
     }
@@ -689,12 +687,10 @@ impl ByteBuf {
     #[inline]
     fn prepend_bytes(&mut self, bytes: Vec<u8>) {
         let temp = match self.first_mut() {
-            Some(first) => {
-                match first.prependable() >= 512 {
-                    true => Some(first.split_off(0)),
-                    false => None,
-                }
-            }
+            Some(first) => match first.prependable() >= 512 {
+                true => Some(first.split_off(0)),
+                false => None,
+            },
             None => None,
         };
         let block = Block::from(bytes);

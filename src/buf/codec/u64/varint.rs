@@ -1,6 +1,6 @@
 use std::io::{self, Error, ErrorKind};
 
-use super::super::super::{ReadIter, GetIter, SetIter, Appender, Prepender};
+use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
 
 pub fn read(chain: &mut ReadIter) -> io::Result<u64> {
     let mut v = 0u64;

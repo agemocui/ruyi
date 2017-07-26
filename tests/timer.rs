@@ -1,8 +1,8 @@
 extern crate futures;
 extern crate ruyi;
 
-use std::time::{Instant, Duration};
-use futures::{Future, Async};
+use std::time::{Duration, Instant};
+use futures::{Async, Future};
 
 use ruyi::reactor::{self, Timer};
 

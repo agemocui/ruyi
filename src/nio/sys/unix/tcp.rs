@@ -1,6 +1,6 @@
 use std::io;
 use std::mem;
-use std::net::{SocketAddr, TcpStream, TcpListener};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use libc;
@@ -36,20 +36,16 @@ pub fn new_v6() -> io::Result<TcpStream> {
 #[inline]
 pub fn connect(addr: &SocketAddr) -> io::Result<(TcpStream, bool)> {
     let (sock, addr, len) = match *addr {
-        SocketAddr::V4(ref a) => {
-            (
-                new_v4()?,
-                a as *const _ as *const _,
-                mem::size_of_val(a) as libc::socklen_t,
-            )
-        }
-        SocketAddr::V6(ref a) => {
-            (
-                new_v6()?,
-                a as *const _ as *const _,
-                mem::size_of_val(a) as libc::socklen_t,
-            )
-        }
+        SocketAddr::V4(ref a) => (
+            new_v4()?,
+            a as *const _ as *const _,
+            mem::size_of_val(a) as libc::socklen_t,
+        ),
+        SocketAddr::V6(ref a) => (
+            new_v6()?,
+            a as *const _ as *const _,
+            mem::size_of_val(a) as libc::socklen_t,
+        ),
     };
     let res = unsafe { libc::connect(sock.as_raw_fd(), addr, len) };
     match super::cvt(res) {

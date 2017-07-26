@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use io::{AsyncRead, AsyncWrite};
 use net::TcpStream;
-use nio::{ReadV, WriteV, IoVec};
+use nio::{IoVec, ReadV, WriteV};
 
 #[derive(Debug)]
 pub struct Session {

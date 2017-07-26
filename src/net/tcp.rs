@@ -1,11 +1,11 @@
 use std::fmt;
 use std::io;
 use std::mem;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr};
 
 use net2::TcpBuilder;
 
-use futures::{Future, Poll, Stream, Async};
+use futures::{Async, Future, Poll, Stream};
 
 use nio;
 use io::{AsyncRead, AsyncWrite};
@@ -290,15 +290,13 @@ impl Stream for Incoming {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         match self.io.get_ref().accept() {
             Ok((s, a)) => Ok(Async::Ready(Some((TcpStream::from(s), a)))),
-            Err(e) => {
-                match e.kind() {
-                    io::ErrorKind::WouldBlock => {
-                        self.io.need_read()?;
-                        Ok(Async::NotReady)
-                    }
-                    _ => Err(e),
+            Err(e) => match e.kind() {
+                io::ErrorKind::WouldBlock => {
+                    self.io.need_read()?;
+                    Ok(Async::NotReady)
                 }
-            }
+                _ => Err(e),
+            },
         }
     }
 }
@@ -314,20 +312,18 @@ impl Future for TcpConnector {
                 self.state = ConnectState::Finishing(sock);
                 Ok(Async::NotReady)
             }
-            ConnectState::Finishing(mut sock) => {
-                if sock.is_writable() {
-                    match sock.take_error()? {
-                        None => {
-                            sock.no_need_write()?;
-                            Ok(Async::Ready(sock))
-                        }
-                        Some(e) => Err(e),
+            ConnectState::Finishing(mut sock) => if sock.is_writable() {
+                match sock.take_error()? {
+                    None => {
+                        sock.no_need_write()?;
+                        Ok(Async::Ready(sock))
                     }
-                } else {
-                    self.state = ConnectState::Finishing(sock);
-                    Ok(Async::NotReady)
+                    Some(e) => Err(e),
                 }
-            }
+            } else {
+                self.state = ConnectState::Finishing(sock);
+                Ok(Async::NotReady)
+            },
             ConnectState::Connected(sock) => Ok(Async::Ready(sock)),
             ConnectState::Error(e) => Err(e),
             _ => panic!("Attempted to poll TcpConnector after completion"),

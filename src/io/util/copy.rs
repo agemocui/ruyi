@@ -1,7 +1,7 @@
 use std::io;
 use std::mem;
 
-use futures::{Poll, Future, Async};
+use futures::{Async, Future, Poll};
 
 use io::{AsyncRead, AsyncWrite};
 use buf::ByteBuf;
@@ -43,26 +43,22 @@ where
         let mut done_read = false;
         let mut eof = false;
         match self.r {
-            ReadState::Reading(ref mut r) => {
-                if r.is_readable() {
-                    match super::read(r) {
-                        Ok(Some((data, _))) => {
-                            match self.buf {
-                                Some(ref mut buf) => buf.extend(data),
-                                None => self.buf = Some(data),
-                            };
-                            r.need_read()?;
-                        }
-                        Ok(None) => eof = true,
-                        Err(e) => {
-                            match e.kind() {
-                                io::ErrorKind::WouldBlock => r.need_read()?,
-                                _ => return Err(e),
-                            }
-                        }
+            ReadState::Reading(ref mut r) => if r.is_readable() {
+                match super::read(r) {
+                    Ok(Some((data, _))) => {
+                        match self.buf {
+                            Some(ref mut buf) => buf.extend(data),
+                            None => self.buf = Some(data),
+                        };
+                        r.need_read()?;
                     }
+                    Ok(None) => eof = true,
+                    Err(e) => match e.kind() {
+                        io::ErrorKind::WouldBlock => r.need_read()?,
+                        _ => return Err(e),
+                    },
                 }
-            }
+            },
             ReadState::Done(..) => done_read = true,
             _ => panic!("Attempted to poll Copy after completion"),
         }
@@ -121,17 +117,13 @@ where
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_copy() {
             Ok(false) => Ok(Async::NotReady),
-            Ok(true) => {
-                match mem::replace(&mut self.r, ReadState::Dead) {
-                    ReadState::Done(r) => {
-                        match mem::replace(&mut self.w, None) {
-                            Some(w) => Ok(Async::Ready((self.len, r, w))),
-                            _ => ::unreachable(),
-                        }
-                    }
+            Ok(true) => match mem::replace(&mut self.r, ReadState::Dead) {
+                ReadState::Done(r) => match mem::replace(&mut self.w, None) {
+                    Some(w) => Ok(Async::Ready((self.len, r, w))),
                     _ => ::unreachable(),
-                }
-            }
+                },
+                _ => ::unreachable(),
+            },
             Err(e) => {
                 self.r = ReadState::Dead;
                 Err(e)

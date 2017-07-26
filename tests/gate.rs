@@ -4,8 +4,8 @@ extern crate futures;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::Duration;
 
-use futures::{future, Future, Poll, Async};
-use ruyi::reactor::{self, Gate, Timer, IntoTask};
+use futures::{future, Async, Future, Poll};
+use ruyi::reactor::{self, Gate, IntoTask, Timer};
 
 
 static COUNT: AtomicUsize = ATOMIC_USIZE_INIT;

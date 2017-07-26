@@ -79,20 +79,16 @@ where
                     return Ok(Async::NotReady);
                 }
                 match self.data.read(u16le::read) {
-                    Ok(n) => {
-                        match len >= n as usize {
-                            true => {
-                                match self.data.drain_to(n as usize) {
-                                    Ok(t) => Ok(Async::Ready(Some(t))),
-                                    _ => ::unreachable(),
-                                }
-                            }
-                            false => {
-                                self.state = State::More(n as usize);
-                                Ok(Async::NotReady)
-                            }
+                    Ok(n) => match len >= n as usize {
+                        true => match self.data.drain_to(n as usize) {
+                            Ok(t) => Ok(Async::Ready(Some(t))),
+                            _ => ::unreachable(),
+                        },
+                        false => {
+                            self.state = State::More(n as usize);
+                            Ok(Async::NotReady)
                         }
-                    }
+                    },
                     _ => ::unreachable(),
                 }
             }
@@ -119,20 +115,16 @@ where
                     return self.poll_pending();
                 }
                 match self.data.read(u16le::read) {
-                    Ok(n) => {
-                        match len >= n as usize {
-                            true => {
-                                match self.data.drain_to(n as usize) {
-                                    Ok(t) => Ok(Async::Ready(Some(t))),
-                                    _ => ::unreachable(),
-                                }
-                            }
-                            false => {
-                                self.state = State::More(n as usize);
-                                self.poll_more(n as usize)
-                            }
+                    Ok(n) => match len >= n as usize {
+                        true => match self.data.drain_to(n as usize) {
+                            Ok(t) => Ok(Async::Ready(Some(t))),
+                            _ => ::unreachable(),
+                        },
+                        false => {
+                            self.state = State::More(n as usize);
+                            self.poll_more(n as usize)
                         }
-                    }
+                    },
                     _ => ::unreachable(),
                 }
             }

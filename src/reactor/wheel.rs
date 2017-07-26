@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use futures::{Stream, Poll, Async};
+use futures::{Async, Poll, Stream};
 
 use super::event_loop::TaskId;
 use super::{IntoTask, PeriodicTimer};
@@ -339,12 +339,10 @@ impl Timer {
     #[inline]
     pub fn poll(&mut self) -> Poll<(), ()> {
         match self.state {
-            TimerState::Scheduled(timer_id) => {
-                match super::wt_is_expired(timer_id) {
-                    true => Ok(Async::Ready(())),
-                    false => Ok(Async::NotReady),
-                }
-            }
+            TimerState::Scheduled(timer_id) => match super::wt_is_expired(timer_id) {
+                true => Ok(Async::Ready(())),
+                false => Ok(Async::NotReady),
+            },
             TimerState::Unscheduled(dur) => {
                 let timer_id = super::wt_schedule(dur);
                 self.state = TimerState::Scheduled(timer_id);
