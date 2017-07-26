@@ -9,8 +9,8 @@ documentation = "https://docs.rs/ruyi"
 homepage = "https://github.com/agemocui/ruyi"
 repository = "https://github.com/agemocui/ruyi"
 readme = "README.md"
-keywords = ["io", "async", "non-blocking", "event-loop"]
-categories = ["asynchronous"]
+keywords = ["io", "async", "non-blocking", "event-loop", "network"]
+categories = ["asynchronous", "network-programming"]
 license = "MIT/Apache-2.0"
 exclude = [".gitignore", ".travis.yml"]
 
