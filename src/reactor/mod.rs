@@ -70,9 +70,9 @@ where
     F: Future,
 {
     CURRENT_LOOP.with(|eloop| {
-        info!("{} started", eloop);
+        debug!("{} started", eloop);
         let res = eloop.run(f);
-        info!("{} stopped", eloop);
+        debug!("{} stopped", eloop);
         res
     })
 }
