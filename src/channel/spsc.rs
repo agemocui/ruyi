@@ -1,58 +1,68 @@
 use std::cell::Cell;
 use std::fmt;
-use std::mem;
 use std::io;
+use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::stream::Stream;
-use futures::{Async, Poll};
+use futures::Poll;
 
-use super::err::{RecvError, SendError, TryRecvError, TrySendError};
-use nio::{Awakener, Ops, Pollable, Poller, Token};
-use stream::IntoStream;
-use reactor::PollableIo;
+use sys::{self, Awakener};
+use channel::err::{SendError, TrySendError};
 
-struct Inner<T> {
+#[cfg_attr(nightly, repr(align(64)))]
+#[derive(Debug)]
+struct Pointer(AtomicUsize);
+
+impl Pointer {
+    #[inline]
+    fn load(&self, order: Ordering) -> usize {
+        self.0.load(order)
+    }
+
+    #[inline]
+    fn store(&self, val: usize, order: Ordering) {
+        self.0.store(val, order);
+    }
+}
+
+pub(crate) struct RingBuffer<T> {
     buf_ptr: *mut T,
     alloc_cap: usize,
     cap: usize,
     idx_mask: usize,
-    _padding0: [usize; cache_line_pad!(4)],
 
-    front: AtomicUsize,
+    front: Pointer,
     shadow_rear: Cell<usize>,
-    _padding1: [usize; cache_line_pad!(1)],
 
+    rear: Pointer,
     shadow_front: Cell<usize>,
-    rear: AtomicUsize,
 }
 
-unsafe impl<T: Send> Send for Inner<T> {}
-unsafe impl<T> Sync for Inner<T> {}
+unsafe impl<T: Send> Send for RingBuffer<T> {}
+unsafe impl<T> Sync for RingBuffer<T> {}
 
-impl<T> Inner<T> {
+impl<T> RingBuffer<T> {
     #[inline]
-    fn with_capacity(capacity: usize) -> Self {
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
         let n = capacity.next_power_of_two();
         let mut buf = Vec::with_capacity(n);
         let buf_ptr = buf.as_mut_ptr();
         let alloc_cap = buf.capacity();
         mem::forget(buf);
-        Inner {
-            buf_ptr: buf_ptr,
-            alloc_cap: alloc_cap,
+        RingBuffer {
+            buf_ptr,
+            alloc_cap,
             cap: capacity,
             idx_mask: n.wrapping_sub(1),
-            _padding0: [0; cache_line_pad!(4)],
 
-            front: AtomicUsize::new(0),
+            front: Pointer(AtomicUsize::new(0)),
             shadow_rear: Cell::new(0),
-            _padding1: [0; cache_line_pad!(1)],
 
+            rear: Pointer(AtomicUsize::new(0)),
             shadow_front: Cell::new(0),
-            rear: AtomicUsize::new(0),
         }
     }
 
@@ -61,7 +71,7 @@ impl<T> Inner<T> {
         index & self.idx_mask
     }
 
-    fn try_push(&self, t: T) -> Option<T> {
+    pub(crate) fn try_push(&self, t: T) -> Option<T> {
         let rear = self.rear.load(Ordering::Relaxed);
         if self.shadow_front.get() + self.cap <= rear {
             self.shadow_front.set(self.front.load(Ordering::Acquire));
@@ -75,7 +85,7 @@ impl<T> Inner<T> {
         None
     }
 
-    fn try_pop(&self) -> Option<T> {
+    pub(crate) fn try_pop(&self) -> Option<T> {
         let front = self.front.load(Ordering::Relaxed);
         if front == self.shadow_rear.get() {
             self.shadow_rear.set(self.rear.load(Ordering::Acquire));
@@ -91,7 +101,7 @@ impl<T> Inner<T> {
     }
 }
 
-impl<T> fmt::Debug for Inner<T> {
+impl<T> fmt::Debug for RingBuffer<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Channel {{ ")?;
         write!(
@@ -107,7 +117,7 @@ impl<T> fmt::Debug for Inner<T> {
     }
 }
 
-impl<T> Drop for Inner<T> {
+impl<T> Drop for RingBuffer<T> {
     #[inline]
     fn drop(&mut self) {
         while let Some(t) = self.try_pop() {
@@ -119,187 +129,132 @@ impl<T> Drop for Inner<T> {
     }
 }
 
-#[derive(Debug)]
 struct SenderAwakener(Arc<Awakener>);
+
+impl SenderAwakener {
+    #[inline]
+    pub fn wakeup(&self) -> io::Result<()> {
+        self.0.as_ref().wakeup()
+    }
+}
 
 impl Drop for SenderAwakener {
     fn drop(&mut self) {
-        if let Err(e) = (&self.0).wakeup() {
+        if let Err(e) = self.wakeup() {
             if e.kind() != io::ErrorKind::WouldBlock {
-                error!("Failed to wakeup, {:?}: {}", &self.0, e);
+                error!("Failed to wakeup: {}", e);
             }
         }
     }
 }
 
-#[derive(Debug)]
+pub(crate) struct ReceiverAwakener(Arc<Awakener>);
+
+impl ReceiverAwakener {
+    #[inline]
+    pub(crate) fn reset(&self) -> io::Result<()> {
+        self.0.as_ref().reset()
+    }
+
+    #[inline]
+    pub(crate) fn as_inner(&self) -> &Awakener {
+        self.0.as_ref()
+    }
+}
+
+impl Drop for ReceiverAwakener {
+    fn drop(&mut self) {
+        if let Err(e) = self.reset() {
+            if e.kind() != io::ErrorKind::WouldBlock {
+                error!("Failed to reset: {}", e);
+            }
+        }
+    }
+}
+
 pub struct SyncSender<T> {
-    inner: Arc<Inner<T>>,
+    buffer: Arc<RingBuffer<T>>,
     awakener: SenderAwakener,
 }
 
+unsafe impl<T: Send> Send for SyncSender<T> {}
+unsafe impl<T> Sync for SyncSender<T> {}
+
 impl<T> SyncSender<T> {
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
-        if Arc::strong_count(&self.inner) == 1 {
+        if Arc::strong_count(&self.buffer) == 1 {
             return Err(TrySendError::Disconnected(t));
         }
-        if let Some(t) = (&self.inner).try_push(t) {
+        if let Some(t) = (&self.buffer).try_push(t) {
             return Err(TrySendError::Full(t));
         }
-        (&self.awakener.0).wakeup()?;
+        self.awakener.wakeup()?;
         Ok(())
     }
 
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         let mut msg = t;
         loop {
-            if Arc::strong_count(&self.inner) == 1 {
+            if Arc::strong_count(&self.buffer) == 1 {
                 return Err(SendError::Disconnected(msg));
             }
-            match (&self.inner).try_push(msg) {
+            match (&self.buffer).try_push(msg) {
                 Some(t) => msg = t,
                 None => break,
             }
         }
-        (&self.awakener.0).wakeup()?;
+        self.awakener.wakeup()?;
         Ok(())
     }
 }
 
-struct ReceiverAwakener(Arc<Awakener>);
-
-impl Drop for ReceiverAwakener {
-    fn drop(&mut self) {
-        if let Err(e) = (&self.0).reset() {
-            if e.kind() != io::ErrorKind::WouldBlock {
-                error!("Failed to reset, {:?}: {}", &self.0, e);
-            }
-        }
+impl<T> fmt::Debug for SyncSender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SyncSender {{ buffer: {:?} }}", &self.buffer)
     }
 }
 
 pub struct Receiver<T> {
-    inner: Arc<Inner<T>>,
+    buffer: Arc<RingBuffer<T>>,
     awakener: ReceiverAwakener,
 }
 
-pub struct Receiving<T> {
-    io: PollableIo<Receiver<T>>,
-    need_reset: bool,
-}
+unsafe impl<T: Send> Send for Receiver<T> {}
+unsafe impl<T> Sync for Receiver<T> {}
+
+pub struct Recv<T>(sys::Recv<T>);
 
 impl<T> Receiver<T> {
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.reset()?;
-        if let Some(t) = self.try_pop() {
-            Ok(t)
-        } else if Arc::strong_count(&self.inner) == 1 {
-            Err(TryRecvError::Disconnected)
-        } else {
-            Err(TryRecvError::Empty)
-        }
-    }
-
-    pub fn recv(&self) -> Result<T, RecvError> {
-        loop {
-            if let Some(t) = self.try_pop() {
-                (&self.awakener.0).reset()?;
-                return Ok(t);
-            }
-            if Arc::strong_count(&self.inner) == 1 {
-                return Err(RecvError::Disconnected);
-            }
-        }
-    }
-
     #[inline]
-    fn reset(&self) -> io::Result<()> {
-        (&self.awakener.0).reset()
-    }
-
-    #[inline]
-    fn try_pop(&self) -> Option<T> {
-        (&self.inner).try_pop()
-    }
-}
-
-impl<T> Pollable for Receiver<T> {
-    #[inline]
-    fn register(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        (&self.awakener.0).register(poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn reregister(&self, poller: &Poller, interested_ops: Ops, token: Token) -> io::Result<()> {
-        (&self.awakener.0).reregister(poller, interested_ops, token)
-    }
-
-    #[inline]
-    fn deregister(&self, poller: &Poller) -> io::Result<()> {
-        (&self.awakener.0).deregister(poller)
-    }
-}
-
-impl<T> IntoStream for Receiver<T> {
-    type Stream = Receiving<T>;
-
-    #[inline]
-    fn into_stream(self) -> Self::Stream {
-        Receiving {
-            io: PollableIo::new(self),
-            need_reset: true,
-        }
+    pub fn recv(self) -> io::Result<Recv<T>> {
+        Ok(Recv(sys::Recv::try_new(self.buffer, self.awakener)?))
     }
 }
 
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Receiver {{ inner: {:?}, awakener: {:?} }}",
-            &self.inner,
-            &self.awakener.0
-        )
+        write!(f, "Receiver {{ buffer: {:?} }}", &self.buffer)
     }
 }
 
-impl<T> Stream for Receiving<T> {
+impl<T> Stream for Recv<T> {
     type Item = T;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if self.need_reset {
-            if let Err(e) = self.io.get_ref().reset() {
-                if e.kind() == io::ErrorKind::WouldBlock {
-                    self.io.need_read()?;
-                    return Ok(Async::NotReady);
-                }
-                return Err(e);
-            }
-            self.need_reset = false;
-        }
-        if let Some(t) = self.io.get_ref().try_pop() {
-            Ok(Async::Ready(Some(t)))
-        } else if Arc::strong_count(&self.io.get_ref().inner) == 1 {
-            self.need_reset = true;
-            Ok(Async::Ready(None))
-        } else {
-            self.need_reset = true;
-            self.io.need_read()?;
-            Ok(Async::NotReady)
-        }
+        self.0.poll()
     }
 }
 
 pub fn sync_channel<T>(capacity: usize) -> io::Result<(SyncSender<T>, Receiver<T>)> {
-    let inner = Arc::new(Inner::with_capacity(capacity));
+    let buffer = Arc::new(RingBuffer::with_capacity(capacity));
     let awakener = Arc::new(Awakener::new()?);
     let tx = SyncSender {
-        inner: inner.clone(),
+        buffer: buffer.clone(),
         awakener: SenderAwakener(awakener.clone()),
     };
     let rx = Receiver {
-        inner: inner,
+        buffer,
         awakener: ReceiverAwakener(awakener),
     };
     Ok((tx, rx))

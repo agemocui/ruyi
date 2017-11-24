@@ -51,7 +51,6 @@ fn codec_u32() {
 
     i = buf.read(u32::big_endian::read).unwrap();
     assert_eq!(i, 0x12345678);
-
 }
 
 #[test]
@@ -266,17 +265,17 @@ fn compare() {
     b3.append(&[9u8; 101] as &[u8], u8s::append).unwrap();
     b4.append(&[9u8; 100] as &[u8], u8s::append).unwrap();
 
-    assert_eq!(b1 < b2, true);
-    assert_eq!(b2 < b3, true);
-    assert_eq!(b1 < b3, true);
+    assert!(b1 < b2);
+    assert!(b2 < b3);
+    assert!(b1 < b3);
     assert_eq!(b2, b4);
 
     b2.append(1, u8::append).unwrap();
     b4.append(3, u8::append).unwrap();
-    assert_eq!(b2 < b4, true);
+    assert!(b2 < b4);
 
     b3.prepend(7, u8::prepend).unwrap();
-    assert_eq!(b3 < b1, true);
+    assert!(b3 < b1);
 }
 
 #[test]

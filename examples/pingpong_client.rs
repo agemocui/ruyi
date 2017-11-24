@@ -1,17 +1,16 @@
+extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate env_logger;
 
-extern crate getopts;
-extern crate num_cpus;
 extern crate chrono;
 extern crate futures;
+extern crate getopts;
+extern crate num_cpus;
 extern crate ruyi;
 
 use std::env;
-use std::io;
 use std::mem;
-use std::net::{Shutdown, SocketAddr};
+use std::net::SocketAddr;
 use std::path::Path;
 use std::process;
 use std::sync::Arc;
@@ -20,17 +19,15 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::prelude::Utc;
-use futures::{future, stream, Future, Sink, Stream};
+use futures::{stream, Future, IntoFuture, Sink, Stream};
 use env_logger::LogBuilder;
 
 use ruyi::buf::ByteBuf;
 use ruyi::channel::spsc;
-use ruyi::nio;
-use ruyi::io::{self as rio, AsyncRead, AsyncWrite};
-use ruyi::net;
-use ruyi::reactor::{self, IntoTask, Task, Timer};
-use ruyi::stream::IntoStream;
-use ruyi::sink::IntoSink;
+use ruyi::net::TcpStream;
+use ruyi::net::tcp::connect;
+use ruyi::reactor::{self, Timer};
+use ruyi::{IntoTask, Task};
 
 #[derive(Debug, Clone, Copy)]
 struct Conf {
@@ -133,82 +130,6 @@ fn process_command_line() -> Result<Option<Conf>, String> {
     Ok(Some(conf))
 }
 
-struct TcpStream(net::TcpStream);
-
-impl Drop for TcpStream {
-    #[inline]
-    fn drop(&mut self) {
-        self.0.shutdown(Shutdown::Write).ok();
-    }
-}
-
-impl io::Read for TcpStream {
-    #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
-    }
-}
-
-impl nio::ReadV for TcpStream {
-    #[inline]
-    fn readv(&mut self, iovs: &[nio::IoVec]) -> io::Result<usize> {
-        self.0.readv(iovs)
-    }
-}
-
-impl AsyncRead for TcpStream {
-    #[inline]
-    fn need_read(&mut self) -> io::Result<()> {
-        self.0.need_read()
-    }
-
-    #[inline]
-    fn no_need_read(&mut self) -> io::Result<()> {
-        self.0.no_need_read()
-    }
-
-    #[inline]
-    fn is_readable(&self) -> bool {
-        self.0.is_readable()
-    }
-}
-
-impl io::Write for TcpStream {
-    #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    #[inline]
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-}
-
-impl nio::WriteV for TcpStream {
-    #[inline]
-    fn writev(&mut self, iovs: &[nio::IoVec]) -> io::Result<usize> {
-        self.0.writev(iovs)
-    }
-}
-
-impl AsyncWrite for TcpStream {
-    #[inline]
-    fn need_write(&mut self) -> io::Result<()> {
-        self.0.need_write()
-    }
-
-    #[inline]
-    fn no_need_write(&mut self) -> io::Result<()> {
-        self.0.no_need_write()
-    }
-
-    #[inline]
-    fn is_writable(&self) -> bool {
-        self.0.is_writable()
-    }
-}
-
 struct Vars {
     msgs: usize,
     bytes: usize,
@@ -216,9 +137,8 @@ struct Vars {
     count: Arc<AtomicUsize>,
 }
 
-#[inline]
 fn ping_pong(addr: &SocketAddr, len: usize, vars: &'static mut Vars) -> Task {
-    net::TcpStream::connect(addr)
+    connect::<TcpStream>(addr)
         .and_then(move |s| {
             vars.conns -= 1;
             if vars.conns == 0 {
@@ -226,26 +146,29 @@ fn ping_pong(addr: &SocketAddr, len: usize, vars: &'static mut Vars) -> Task {
                     info!("All connected");
                 }
             }
-            future::result(s.set_nodelay(true)).and_then(move |_| {
-                let (r, w) = rio::split(TcpStream(s));
-                let mut data = Vec::<u8>::with_capacity(len);
-                unsafe { data.set_len(len) };
-                w.into_sink().send_all(
-                    stream::once(Ok(ByteBuf::from(data))).chain(r.into_stream().filter(move |b| {
-                        vars.msgs += 1;
-                        vars.bytes += b.len();
-                        true
-                    })),
-                )
-            })
+            s.as_ref()
+                .set_nodelay(true)
+                .into_future()
+                .and_then(move |_| {
+                    let (r, w) = s.into_2way();
+                    let mut data = Vec::<u8>::with_capacity(len);
+                    unsafe { data.set_len(len) };
+                    w.send_all(stream::once(Ok(ByteBuf::from(data))).chain(
+                        r.filter(move |b| {
+                            vars.msgs += 1;
+                            vars.bytes += b.len();
+                            true
+                        }),
+                    ))
+                })
         })
         .map_err(|e| error!("{}", e))
         .into_task()
 }
 
-#[inline]
 fn run(conf: Conf) {
     info!("Start - {:?}", conf);
+    ruyi::net::init();
     let timer = Timer::new(Duration::from_secs(conf.seconds));
     let mut threads = Vec::with_capacity(conf.threads);
     let total_msgs = Arc::new(AtomicUsize::new(0));
@@ -261,11 +184,11 @@ fn run(conf: Conf) {
             let mut vars = Vars {
                 msgs: 0,
                 bytes: 0,
-                conns: conns,
+                conns,
                 count: n,
             };
             {
-                let task = rx.into_stream().for_each(|(addr, bytes)| {
+                let task = rx.recv().unwrap().for_each(|(addr, bytes)| {
                     for _ in 0..conns {
                         let s_vars: &'static mut Vars = unsafe { mem::transmute(&mut vars) };
                         reactor::spawn(ping_pong(&addr, bytes, s_vars));

@@ -1,3 +1,7 @@
-mod tcp;
+pub mod tcp;
+pub use self::tcp::{TcpListener, TcpListenerBuilder, TcpStream};
 
-pub use self::tcp::*;
+#[inline]
+pub fn init() {
+    ::sys::net::init()
+}

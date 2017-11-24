@@ -10,7 +10,7 @@ struct Counter {
 impl Counter {
     fn new(count: usize) -> Self {
         Counter {
-            count: count,
+            count,
             origin: count,
         }
     }
@@ -27,7 +27,7 @@ impl Counter {
 
 impl Drop for Counter {
     fn drop(&mut self) {
-        assert!(self.count == self.origin);
+        assert_eq!(self.count, self.origin);
         self.count += 1;
     }
 }
@@ -49,16 +49,15 @@ impl From<CntIdx> for usize {
 
 #[test]
 fn slab_insert() {
-
     let mut slab = slab::with_capacity::<Counter, CntIdx>(1);
     slab.insert(Counter::new(10));
-    assert!(slab.len() == 1);
+    assert_eq!(slab.len(), 1);
 
     slab.insert(Counter::new(20));
-    assert!(slab.len() == 2);
+    assert_eq!(slab.len(), 2);
 
     slab.insert(Counter::new(30));
-    assert!(slab.len() == 3);
+    assert_eq!(slab.len(), 3);
 }
 
 #[test]
@@ -69,7 +68,7 @@ fn slab_remove() {
     {
         let f1 = slab.remove(a1);
         assert!(f1.is_some());
-        assert!(f1.unwrap().count() == 10);
+        assert_eq!(f1.unwrap().count(), 10);
     }
 
     slab.insert(Counter::new(30));
@@ -78,7 +77,7 @@ fn slab_remove() {
         slab.remove(a2);
     }
 
-    assert!(slab.len() == 1);
+    assert_eq!(slab.len(), 1);
 }
 
 #[test]
@@ -87,25 +86,25 @@ fn slab_get() {
     let a1 = slab.insert(Counter::new(10));
     let a2 = slab.insert(Counter::new(20));
 
-    assert!(slab[a1].count() == 10);
-    assert!(slab[a2].count() == 20);
+    assert_eq!(slab[a1].count(), 10);
+    assert_eq!(slab[a2].count(), 20);
 
     slab.get_mut(a2).unwrap().set_count(200);
-    assert!(slab[a2].count() == 200);
+    assert_eq!(slab[a2].count(), 200);
     (&mut slab[a2]).set_count(40);
-    assert!(slab.remove(a2).unwrap().count() == 40);
+    assert_eq!(slab.remove(a2).unwrap().count(), 40);
 
     let a3 = slab.insert(Counter::new(30));
-    assert!(slab[a3].count() == 30);
+    assert_eq!(slab[a3].count(), 30);
 
     unsafe {
-        assert!(slab.get_unchecked(a3).count() == 30);
+        assert_eq!(slab.get_unchecked(a3).count(), 30);
         slab.get_unchecked_mut(a3).set_count(300);
     }
-    assert!(slab[a3].count() == 300);
+    assert_eq!(slab[a3].count(), 300);
 
-    assert!(slab.remove(a3).unwrap().count() == 300);
-    assert!(slab.remove(a1).unwrap().count() == 10);
+    assert_eq!(slab.remove(a3).unwrap().count(), 300);
+    assert_eq!(slab.remove(a1).unwrap().count(), 10);
 }
 
 #[test]

@@ -2,9 +2,8 @@ use std::fmt;
 use std::marker;
 use std::mem;
 use std::ops::{Index, IndexMut};
-use std::usize::MAX;
 
-const INVALID_INDEX: usize = MAX;
+const INVALID_INDEX: usize = ::std::usize::MAX;
 
 #[inline]
 pub fn invalid_index<I: From<usize>>() -> I {
@@ -133,12 +132,12 @@ impl<T, I: From<usize> + Into<usize>> Slab<T, I> {
     pub fn insert(&mut self, elem: T) -> I {
         let obj_idx;
         if self.hfree != INVALID_INDEX {
-            obj_idx = usize::from(self.hfree);
+            obj_idx = self.hfree;
             let obj = unsafe { self.objs.get_unchecked_mut(obj_idx) };
             self.hfree = unsafe { obj.unchecked_next_free() };
             *obj = Object::Used(elem);
         } else {
-            obj_idx = usize::from(self.objs.len());
+            obj_idx = self.objs.len();
             self.objs.push(Object::Used(elem));
         }
         self.len += 1;
@@ -196,13 +195,13 @@ impl<T, I: From<usize> + Into<usize>> Index<I> for Slab<T, I> {
 
     #[inline]
     fn index(&self, idx: I) -> &T {
-        self.get(idx).expect("Invalid ID")
+        self.get(idx).expect("Invalid index")
     }
 }
 
 impl<T, I: From<usize> + Into<usize>> IndexMut<I> for Slab<T, I> {
     #[inline]
     fn index_mut(&mut self, idx: I) -> &mut T {
-        self.get_mut(idx).expect("Invalid ID")
+        self.get_mut(idx).expect("Invalid index")
     }
 }

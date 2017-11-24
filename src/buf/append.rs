@@ -16,7 +16,7 @@ pub(super) fn appender<'a>(inner: &'a mut ByteBuf) -> Appender<'a> {
 impl<'a> AppendBlock<'a> {
     #[inline]
     fn new(inner: &'a mut Block) -> Self {
-        AppendBlock { inner: inner }
+        AppendBlock { inner }
     }
 
     #[inline]

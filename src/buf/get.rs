@@ -25,7 +25,7 @@ impl<'a> GetBlock<'a> {
     #[inline]
     fn new(inner: &'a Block) -> Self {
         GetBlock {
-            inner: inner,
+            inner,
             get_pos: inner.read_pos(),
         }
     }
@@ -33,7 +33,7 @@ impl<'a> GetBlock<'a> {
     #[inline]
     fn with_index(inner: &'a Block, index: usize) -> Self {
         GetBlock {
-            inner: inner,
+            inner,
             get_pos: inner.read_pos() + index,
         }
     }

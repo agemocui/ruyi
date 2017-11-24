@@ -25,19 +25,13 @@ impl<'a> SetBlock<'a> {
     #[inline]
     fn new(inner: &'a mut Block) -> Self {
         let set_pos = inner.read_pos();
-        SetBlock {
-            inner: inner,
-            set_pos: set_pos,
-        }
+        SetBlock { inner, set_pos }
     }
 
     #[inline]
     fn with_offset(inner: &'a mut Block, off: usize) -> Self {
         let set_pos = inner.read_pos() + off;
-        SetBlock {
-            inner: inner,
-            set_pos: set_pos,
-        }
+        SetBlock { inner, set_pos }
     }
 
     #[inline]

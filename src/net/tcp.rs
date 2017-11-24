@@ -1,172 +1,21 @@
 use std::fmt;
 use std::io;
-use std::mem;
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr};
+use std::net::{self, IpAddr, Ipv4Addr, Shutdown, SocketAddr};
+use std::time::Duration;
 
-use net2::TcpBuilder;
+use net2::{TcpBuilder, TcpStreamExt};
+use futures::{Async, AsyncSink, Future, Poll, Sink, StartSend, Stream};
+use futures::stream::StreamFuture;
+use futures::sink::{Send, SendAll};
 
-use futures::{Async, Future, Poll, Stream};
+use buf::ByteBuf;
+use sys::net::tcp;
 
-use nio;
-use io::{AsyncRead, AsyncWrite};
-use reactor::PollableIo;
-
-#[derive(Debug)]
-pub struct TcpStream {
-    inner: PollableIo<nio::TcpStream>,
-}
-
-enum ConnectState {
-    Connecting(TcpStream),
-    Finishing(TcpStream),
-    Connected(TcpStream),
-    Error(io::Error),
-    Dead,
-}
-
-pub struct TcpConnector {
-    state: ConnectState,
-}
-
-impl TcpStream {
-    #[inline]
-    fn from(sock: nio::TcpStream) -> Self {
-        TcpStream {
-            inner: PollableIo::new(sock),
-        }
-    }
-
-    pub fn connect(addr: &SocketAddr) -> TcpConnector {
-        let state = match nio::TcpStream::connect(addr) {
-            Ok((sock, connected)) => {
-                let io = Self::from(sock);
-                match connected {
-                    false => ConnectState::Connecting(io),
-                    true => ConnectState::Connected(io),
-                }
-            }
-            Err(e) => ConnectState::Error(e),
-        };
-        TcpConnector { state }
-    }
-
-    #[inline]
-    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.inner.get_ref().peer_addr()
-    }
-
-    #[inline]
-    pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.inner.get_ref().local_addr()
-    }
-
-    #[inline]
-    pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.inner.get_ref().shutdown(how)
-    }
-
-    #[inline]
-    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
-        self.inner.get_ref().set_nodelay(nodelay)
-    }
-
-    #[inline]
-    pub fn nodelay(&self) -> io::Result<bool> {
-        self.inner.get_ref().nodelay()
-    }
-
-    #[inline]
-    pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
-        self.inner.get_ref().set_ttl(ttl)
-    }
-
-    #[inline]
-    pub fn ttl(&self) -> io::Result<u32> {
-        self.inner.get_ref().ttl()
-    }
-
-    #[inline]
-    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.inner.get_ref().take_error()
-    }
-}
-
-impl fmt::Display for TcpStream {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use std::fmt::Debug;
-        self.inner.get_ref().fmt(f)
-    }
-}
-
-impl io::Read for TcpStream {
-    #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.get_mut().read(buf)
-    }
-}
-
-impl nio::ReadV for TcpStream {
-    #[inline]
-    fn readv(&mut self, iovs: &[nio::IoVec]) -> io::Result<usize> {
-        self.inner.get_mut().readv(iovs)
-    }
-}
-
-impl AsyncRead for TcpStream {
-    #[inline]
-    fn need_read(&mut self) -> io::Result<()> {
-        self.inner.need_read()
-    }
-
-    #[inline]
-    fn no_need_read(&mut self) -> io::Result<()> {
-        self.inner.no_need_read()
-    }
-
-    #[inline]
-    fn is_readable(&self) -> bool {
-        self.inner.is_readable()
-    }
-}
-
-impl io::Write for TcpStream {
-    #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.get_mut().write(buf)
-    }
-
-    #[inline]
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.get_mut().flush()
-    }
-}
-
-impl nio::WriteV for TcpStream {
-    #[inline]
-    fn writev(&mut self, iovs: &[nio::IoVec]) -> io::Result<usize> {
-        self.inner.get_mut().writev(iovs)
-    }
-}
-
-impl AsyncWrite for TcpStream {
-    #[inline]
-    fn need_write(&mut self) -> io::Result<()> {
-        self.inner.need_write()
-    }
-
-    #[inline]
-    fn no_need_write(&mut self) -> io::Result<()> {
-        self.inner.no_need_write()
-    }
-
-    #[inline]
-    fn is_writable(&self) -> bool {
-        self.inner.is_writable()
-    }
-}
+////////////////////////////////////////////////////////////////////////////////
+// TcpListener
 
 pub struct Incoming {
-    io: PollableIo<nio::TcpListener>,
+    inner: tcp::Incoming,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -178,7 +27,7 @@ pub struct TcpListenerBuilder {
 }
 
 pub struct TcpListener {
-    inner: nio::TcpListener,
+    inner: net::TcpListener,
 }
 
 impl TcpListener {
@@ -188,10 +37,10 @@ impl TcpListener {
     }
 
     #[inline]
-    pub fn incoming(self) -> Incoming {
-        Incoming {
-            io: PollableIo::new(self.inner),
-        }
+    pub fn incoming(self) -> io::Result<Incoming> {
+        Ok(Incoming {
+            inner: tcp::Incoming::try_from(self)?,
+        })
     }
 
     #[inline]
@@ -210,13 +59,27 @@ impl TcpListener {
     }
 
     #[inline]
-    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.inner.take_error()
+    pub(crate) fn as_inner(&self) -> &net::TcpListener {
+        &self.inner
     }
 
     #[inline]
-    fn from(inner: nio::TcpListener) -> Self {
+    fn from(inner: net::TcpListener) -> Self {
         TcpListener { inner }
+    }
+}
+
+impl AsRef<Self> for TcpListener {
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl fmt::Debug for TcpListener {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.inner.fmt(f)
     }
 }
 
@@ -279,7 +142,7 @@ impl TcpListenerBuilder {
             .bind(self.addr)?
             .listen(self.backlog)?;
         listener.set_nonblocking(true)?;
-        Ok(TcpListener::from(nio::TcpListener::from(listener)))
+        Ok(TcpListener::from(listener))
     }
 }
 
@@ -288,45 +151,453 @@ impl Stream for Incoming {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match self.io.get_ref().accept() {
-            Ok((s, a)) => Ok(Async::Ready(Some((TcpStream::from(s), a)))),
-            Err(e) => match e.kind() {
-                io::ErrorKind::WouldBlock => {
-                    self.io.need_read()?;
-                    Ok(Async::NotReady)
-                }
-                _ => Err(e),
-            },
-        }
+        self.inner.poll_accept()
     }
 }
 
-impl Future for TcpConnector {
-    type Item = TcpStream;
+///////////////////////////////////////////////////////////////////////////////
+// TcpStream
+
+#[derive(Debug)]
+pub struct TcpStream {
+    inner: net::TcpStream,
+}
+
+impl TcpStream {
+    /// Returns the local address.
+    #[inline]
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.as_inner().local_addr()
+    }
+
+    /// Returns the remote address.
+    #[inline]
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.as_inner().peer_addr()
+    }
+
+    #[inline]
+    pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        self.as_inner().shutdown(how)
+    }
+
+    #[inline]
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.as_inner().set_nodelay(nodelay)
+    }
+
+    #[inline]
+    pub fn nodelay(&self) -> io::Result<bool> {
+        self.as_inner().nodelay()
+    }
+
+    #[inline]
+    pub fn set_recv_buffer_size(&self, size: usize) -> io::Result<()> {
+        self.as_inner().set_recv_buffer_size(size)
+    }
+
+    #[inline]
+    pub fn recv_buffer_size(&self) -> io::Result<usize> {
+        self.as_inner().recv_buffer_size()
+    }
+
+    #[inline]
+    pub fn set_send_buffer_size(&self, size: usize) -> io::Result<()> {
+        self.as_inner().set_send_buffer_size(size)
+    }
+
+    #[inline]
+    pub fn send_buffer_size(&self) -> io::Result<usize> {
+        self.as_inner().send_buffer_size()
+    }
+
+    #[inline]
+    pub fn set_keepalive(&self, keepalive: Option<Duration>) -> io::Result<()> {
+        self.as_inner().set_keepalive(keepalive)
+    }
+
+    #[inline]
+    pub fn keepalive(&self) -> io::Result<Option<Duration>> {
+        self.as_inner().keepalive()
+    }
+
+    #[inline]
+    pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
+        self.as_inner().set_ttl(ttl)
+    }
+
+    #[inline]
+    pub fn ttl(&self) -> io::Result<u32> {
+        self.as_inner().ttl()
+    }
+
+    #[inline]
+    pub fn set_linger(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.as_inner().set_linger(dur)
+    }
+
+    #[inline]
+    pub fn linger(&self) -> io::Result<Option<Duration>> {
+        self.as_inner().linger()
+    }
+
+    #[inline]
+    pub fn set_only_v6(&self, only_v6: bool) -> io::Result<()> {
+        self.as_inner().set_only_v6(only_v6)
+    }
+
+    #[inline]
+    pub fn only_v6(&self) -> io::Result<bool> {
+        self.as_inner().only_v6()
+    }
+
+    #[inline]
+    pub(crate) fn as_inner(&self) -> &net::TcpStream {
+        &self.inner
+    }
+
+    #[inline]
+    pub(crate) fn from(inner: net::TcpStream) -> Self {
+        TcpStream { inner }
+    }
+}
+
+impl AsRef<Self> for TcpStream {
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl AsMut<Self> for TcpStream {
+    #[inline]
+    fn as_mut(&mut self) -> &mut Self {
+        self
+    }
+}
+
+impl fmt::Display for TcpStream {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.inner, f)
+    }
+}
+
+pub struct Connect<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    inner: tcp::Connect<T>,
+}
+
+impl<T> Future for Connect<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    type Item = Sender<T>;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match mem::replace(&mut self.state, ConnectState::Dead) {
-            ConnectState::Connecting(mut sock) => {
-                sock.need_write()?;
-                self.state = ConnectState::Finishing(sock);
-                Ok(Async::NotReady)
-            }
-            ConnectState::Finishing(mut sock) => if sock.is_writable() {
-                match sock.take_error()? {
-                    None => {
-                        sock.no_need_write()?;
-                        Ok(Async::Ready(sock))
-                    }
-                    Some(e) => Err(e),
-                }
-            } else {
-                self.state = ConnectState::Finishing(sock);
-                Ok(Async::NotReady)
-            },
-            ConnectState::Connected(sock) => Ok(Async::Ready(sock)),
-            ConnectState::Error(e) => Err(e),
-            _ => panic!("Attempted to poll TcpConnector after completion"),
-        }
+        let inner = try_ready!(self.inner.poll_connect());
+        Ok(Async::Ready(Sender {
+            inner,
+            buf: ByteBuf::new(),
+        }))
     }
+}
+
+pub struct Recv<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    inner: tcp::Recv<T>,
+}
+
+impl<T> AsRef<T> for Recv<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        self.inner.get_ref()
+    }
+}
+
+impl<T> AsMut<T> for Recv<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut T {
+        self.inner.get_mut()
+    }
+}
+
+impl<T> Stream for Recv<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    type Item = ByteBuf;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        self.inner.poll_recv()
+    }
+}
+
+impl<T> Recv<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    pub fn next(self) -> StreamFuture<Self> {
+        self.into_future()
+    }
+
+    #[inline]
+    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+        let (r, s) = self.inner.into_2way();
+        (
+            RecvHalf { inner: r },
+            SendHalf {
+                inner: s,
+                buf: ByteBuf::new(),
+            },
+        )
+    }
+}
+
+pub struct Sender<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    inner: tcp::Sender<T>,
+    buf: ByteBuf,
+}
+
+impl<T> AsRef<T> for Sender<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        self.inner.get_ref()
+    }
+}
+
+impl<T> AsMut<T> for Sender<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut T {
+        self.inner.get_mut()
+    }
+}
+
+impl<T> Sender<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn try_from(io: T) -> io::Result<Self> {
+        Ok(Sender {
+            inner: tcp::Sender::try_from(io)?,
+            buf: ByteBuf::new(),
+        })
+    }
+
+    #[inline]
+    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+        let (r, s) = self.inner.into_2way();
+        (
+            RecvHalf { inner: r },
+            SendHalf {
+                inner: s,
+                buf: self.buf,
+            },
+        )
+    }
+}
+
+impl<T> Sink for Sender<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    type SinkItem = ByteBuf;
+    type SinkError = io::Error;
+
+    fn start_send(&mut self, data: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+        match self.buf.is_empty() {
+            true => self.buf = data,
+            false => self.buf.extend(data),
+        }
+        Ok(AsyncSink::Ready)
+    }
+
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+        self.inner.poll_send(&mut self.buf)
+    }
+
+    fn close(&mut self) -> Poll<(), Self::SinkError> {
+        try_ready!(self.inner.poll_send(&mut self.buf));
+        self.as_ref().as_ref().shutdown(Shutdown::Write)?;
+        Ok(Async::Ready(()))
+    }
+}
+
+pub struct RecvHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    inner: tcp::RecvHalf<T>,
+}
+
+impl<T> AsRef<T> for RecvHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        self.inner.get_ref()
+    }
+}
+
+impl<T> AsMut<T> for RecvHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut T {
+        self.inner.get_mut()
+    }
+}
+
+impl<T> Stream for RecvHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    type Item = ByteBuf;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        self.inner.poll_recv()
+    }
+}
+
+impl<T> RecvHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    pub fn next(self) -> StreamFuture<Self> {
+        self.into_future()
+    }
+}
+
+pub struct SendHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    inner: tcp::SendHalf<T>,
+    buf: ByteBuf,
+}
+
+impl<T> AsRef<T> for SendHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        self.inner.get_ref()
+    }
+}
+
+impl<T> AsMut<T> for SendHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut T {
+        self.inner.get_mut()
+    }
+}
+
+impl<T> Sink for SendHalf<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    type SinkItem = ByteBuf;
+    type SinkError = io::Error;
+
+    fn start_send(&mut self, data: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+        match self.buf.is_empty() {
+            true => self.buf = data,
+            false => self.buf.extend(data),
+        }
+        Ok(AsyncSink::Ready)
+    }
+
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+        self.inner.poll_send(&mut self.buf)
+    }
+
+    fn close(&mut self) -> Poll<(), Self::SinkError> {
+        try_ready!(self.inner.poll_send(&mut self.buf));
+        self.as_ref().as_ref().shutdown(Shutdown::Write)?;
+        Ok(Async::Ready(()))
+    }
+}
+
+#[inline]
+pub fn connect<T>(addr: &SocketAddr) -> Connect<T>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream> + From<TcpStream>,
+{
+    Connect {
+        inner: tcp::Connect::from(addr),
+    }
+}
+
+#[inline]
+pub fn recv<T>(io: T) -> io::Result<Recv<T>>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    Ok(Recv {
+        inner: tcp::Recv::try_from(io)?,
+    })
+}
+
+#[inline]
+pub fn send<T>(io: T, data: ByteBuf) -> io::Result<Send<Sender<T>>>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    Ok(Sender::try_from(io)?.send(data))
+}
+
+#[inline]
+pub fn send_all<T, S>(io: T, s: S) -> io::Result<SendAll<Sender<T>, S>>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+    S: Stream<Item = ByteBuf>,
+    io::Error: From<S::Error>,
+{
+    Ok(Sender::try_from(io)?.send_all(s))
+}
+
+#[inline]
+pub fn split<T>(io: T) -> io::Result<(RecvHalf<T>, SendHalf<T>)>
+where
+    T: AsRef<TcpStream> + AsMut<TcpStream>,
+{
+    let (r, s) = tcp::split(io)?;
+    Ok((
+        RecvHalf { inner: r },
+        SendHalf {
+            inner: s,
+            buf: ByteBuf::new(),
+        },
+    ))
 }

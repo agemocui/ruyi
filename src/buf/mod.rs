@@ -1,7 +1,7 @@
 pub mod codec;
 
 mod block;
-use self::block::Block;
+pub(crate) use self::block::Block;
 
 mod read;
 pub use self::read::{ReadBlock, ReadIter};
@@ -35,11 +35,8 @@ pub use self::writer::Writer;
 
 use std::cmp::Ordering;
 use std::mem;
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{Error, ErrorKind, Result};
 use std::ptr;
-use std::slice;
-
-use nio::{IoVec, ReadV, WriteV};
 
 const EMPTY: &[u8] = &[];
 
@@ -80,7 +77,7 @@ impl ByteBuf {
 
     #[inline]
     pub fn with_growth(mut growth: usize) -> Self {
-        if growth < word_len!() {
+        if growth < mem::size_of::<usize>() {
             growth = 8 * 1024;
         }
         ByteBuf {
@@ -118,7 +115,7 @@ impl ByteBuf {
     }
 
     #[inline]
-    pub fn get<T, G>(&mut self, mut index: usize, get: G) -> Result<T>
+    pub fn get<T, G>(&self, mut index: usize, get: G) -> Result<T>
     where
         G: Fn(&mut GetIter) -> Result<T>,
     {
@@ -127,7 +124,7 @@ impl ByteBuf {
     }
 
     #[inline]
-    pub fn get_exact<T, G>(&mut self, mut index: usize, len: usize, get_exact: G) -> Result<T>
+    pub fn get_exact<T, G>(&self, mut index: usize, len: usize, get_exact: G) -> Result<T>
     where
         G: Fn(&mut GetIter, usize) -> Result<T>,
     {
@@ -356,7 +353,7 @@ impl ByteBuf {
                     }
                 };
             }
-            idx += 1;
+            idx += 1usize;
             if idx >= self.blocks.len() {
                 break;
             }
@@ -430,8 +427,8 @@ impl ByteBuf {
     }
 
     pub fn compact(&mut self) {
-        while self.idx < self.blocks.len() &&
-            unsafe { self.blocks.get_unchecked(self.idx) }.is_empty()
+        while self.idx < self.blocks.len()
+            && unsafe { self.blocks.get_unchecked(self.idx) }.is_empty()
         {
             self.idx += 1;
         }
@@ -482,74 +479,6 @@ impl ByteBuf {
         true
     }
 
-    pub fn read_in<R>(&mut self, mut r: R) -> Result<usize>
-    where
-        R: Read + ReadV,
-    {
-        let n = self.blocks.len() as isize;
-        let ptr = self.blocks.as_mut_ptr();
-        let last = unsafe { &mut *ptr.offset(n - 1) };
-        let off = last.write_pos();
-        let size = last.appendable();
-        if n > 1 && last.is_empty() {
-            let last_2nd = unsafe { &mut *ptr.offset(n - 2) };
-            let size2 = last_2nd.appendable();
-            if size2 > 0 {
-                let off2 = last_2nd.write_pos();
-                let iovs = [
-                    IoVec::from_mut(unsafe { &mut *last_2nd.mut_ptr_at(off2) }, size2),
-                    IoVec::from_mut(unsafe { &mut *last.mut_ptr_at(off) }, size),
-                ];
-                let read = r.readv(&iovs)?;
-                if read <= size2 {
-                    last_2nd.set_write_pos(off2 + read);
-                } else {
-                    let mut len = last_2nd.capacity();
-                    last_2nd.set_write_pos(len);
-                    len = read - size2;
-                    last.set_write_pos(off + len);
-                }
-                return Ok(read);
-            }
-        }
-
-        let buf = unsafe { slice::from_raw_parts_mut(last.mut_ptr_at(off), size) };
-        let read = r.read(buf)?;
-        last.set_write_pos(off + read);
-        Ok(read)
-    }
-
-    pub fn write_out<W>(&mut self, w: &mut W) -> Result<usize>
-    where
-        W: Write + WriteV,
-    {
-        let n = self.blocks.len() - self.idx;
-        if n == 1 {
-            let block = unsafe { self.blocks.get_unchecked_mut(self.idx) };
-            if block.len() < 1 {
-                return Ok(0);
-            }
-            let off = block.read_pos();
-            let buf = unsafe { slice::from_raw_parts(block.ptr_at(off), block.len()) };
-            let written = w.write(buf)?;
-            block.set_read_pos(off + written);
-            Ok(written)
-        } else if n > 1 {
-            let mut iovs = Vec::with_capacity(n);
-            for block in &self.blocks[self.idx..] {
-                if block.len() > 0 {
-                    let off = block.read_pos();
-                    iovs.push(IoVec::from(unsafe { &*block.ptr_at(off) }, block.len()));
-                }
-            }
-            let written = w.writev(iovs.as_slice())?;
-            self.skip(written);
-            Ok(written)
-        } else {
-            Ok(0)
-        }
-    }
-
     #[inline]
     pub fn as_reader(&mut self) -> Reader {
         reader::new(self)
@@ -568,6 +497,11 @@ impl ByteBuf {
     #[inline]
     pub fn bytes(&self) -> Bytes {
         bytes::new(self)
+    }
+
+    #[inline]
+    pub(crate) fn add_block(&mut self, block: Block) {
+        self.blocks.push(block);
     }
 
     #[inline]

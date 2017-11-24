@@ -1,10 +1,10 @@
 use std::borrow::ToOwned;
 
-use reactor::Task;
+use task::Task;
 use service::tcp::Session;
 
 pub trait Handler {
-    fn handle(&mut self, session: Session) -> Task;
+    fn handle(&mut self, session: Session) -> Option<Task>;
 }
 
 pub trait ToHandler {

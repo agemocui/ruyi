@@ -1,11 +1,5 @@
 use futures::Stream;
 
-pub trait IntoStream {
-    type Stream: Stream;
-
-    fn into_stream(self) -> Self::Stream;
-}
-
 pub trait Timeout {
     type Stream: Stream;
 

@@ -1,41 +1,57 @@
 #[macro_use]
 extern crate log;
+
 extern crate env_logger;
 
-extern crate num_cpus;
 extern crate chrono;
 extern crate futures;
+extern crate num_cpus;
 extern crate ruyi;
 
+use std::io;
 use std::thread;
 
 use chrono::prelude::Local;
-use futures::{future, Future, Sink};
+use futures::Future;
 
+use ruyi::{IntoTask, Task};
 use ruyi::buf::ByteBuf;
-use ruyi::sink::IntoSink;
-use ruyi::reactor::{IntoTask, Task};
+use ruyi::net::tcp::send;
 use ruyi::service::tcp::{self, Handler, Session};
 
 #[derive(Clone)]
 struct DayTime;
 
-impl Handler for DayTime {
-    fn handle(&mut self, session: Session) -> Task {
-        future::result(session.set_nodelay(true))
-            .and_then(|_| {
-                let time = Local::now().to_rfc2822() + "\r\n";
-                let response = ByteBuf::from(time.into_bytes());
-                session.into_sink().send(response)
-            })
+impl DayTime {
+    #[inline]
+    fn task(session: Session) -> io::Result<Task> {
+        session.as_ref().set_nodelay(true)?;
+        let time = Local::now().to_rfc2822() + "\r\n";
+        let response = ByteBuf::from(time.into_bytes());
+        let task = send(session, response)?
             .map_err(|e| error!("{}", e))
-            .into_task()
+            .into_task();
+        Ok(task)
+    }
+}
+
+impl Handler for DayTime {
+    fn handle(&mut self, session: Session) -> Option<Task> {
+        match Self::task(session) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                error!("{}", e);
+                None
+            }
+        }
     }
 }
 
 fn main() {
     // Initialize logger
     env_logger::init().unwrap();
+
+    ruyi::net::init();
 
     let n = num_cpus::get();
     match tcp::Server::with_handler(DayTime)

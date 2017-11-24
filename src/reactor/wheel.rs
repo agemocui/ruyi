@@ -4,12 +4,12 @@ use std::time::{Duration, Instant};
 
 use futures::{Async, Poll, Stream};
 
-use super::event_loop::TaskId;
-use super::{IntoTask, PeriodicTimer};
+use task::{IntoTask, TaskId};
 use slab::{self, Slab};
+use reactor::{PeriodicTimer, CURRENT_LOOP};
 
 #[derive(Debug, Clone, Copy)]
-pub struct TimerId {
+struct TimerId {
     index: usize,
 }
 
@@ -66,6 +66,7 @@ struct Inner {
 }
 
 impl Inner {
+    #[inline]
     fn new() -> Self {
         const NUM_OF_SLOTS: usize = 128; // must be power of 2
         const INIT_CAPACITY: usize = 512;
@@ -238,10 +239,10 @@ impl Inner {
                     if exp >= now + Duration::from_secs(1) {
                         self.reschedule_internal(exp - now, Some(exp), timer_id);
                     } else {
-                        exit = super::run_expired_task(task);
+                        exit = run_expired_task(task);
                     }
                 } else {
-                    exit = super::run_expired_task(task);
+                    exit = run_expired_task(task);
                 }
             }
             match next {
@@ -260,16 +261,20 @@ impl Inner {
 }
 
 pub(super) struct Wheel {
-    inner: Rc<UnsafeCell<Inner>>,
+    inner: Option<Rc<UnsafeCell<Inner>>>,
 }
 
 impl Wheel {
-    pub fn new() -> Self {
+    #[inline]
+    pub(super) fn new() -> Self {
+        Wheel { inner: None }
+    }
+
+    #[inline]
+    fn init(&mut self) {
         let dur = Duration::from_secs(1);
         let inner = Rc::new(UnsafeCell::new(Inner::new()));
-        let wheel = Wheel {
-            inner: inner.clone(),
-        };
+        self.inner = Some(inner.clone());
         super::spawn(
             PeriodicTimer::new(dur, dur)
                 .for_each(move |_| {
@@ -278,37 +283,46 @@ impl Wheel {
                 })
                 .into_task(),
         );
-        wheel
     }
 
     #[inline]
-    pub fn schedule(&self, dur: Duration, task: TaskId) -> TimerId {
+    fn schedule(&mut self, dur: Duration, task: TaskId) -> TimerId {
+        match self.inner.as_ref() {
+            None => self.init(),
+            _ => {}
+        }
         self.as_mut_inner().schedule(dur, task)
     }
 
     #[inline]
-    pub fn reschedule(&self, dur: Duration, timer_id: TimerId) {
+    fn reschedule(&mut self, dur: Duration, timer_id: TimerId) {
         self.as_mut_inner().reschedule(dur, timer_id)
     }
 
     #[inline]
-    pub fn cancel(&self, timer_id: TimerId) {
+    fn cancel(&mut self, timer_id: TimerId) {
         self.as_mut_inner().cancel(timer_id);
     }
 
     #[inline]
-    pub fn is_expired(&self, timer_id: TimerId) -> bool {
+    fn is_expired(&self, timer_id: TimerId) -> bool {
         self.as_inner().is_expired(timer_id)
     }
 
     #[inline]
-    fn as_mut_inner(&self) -> &mut Inner {
-        unsafe { &mut *(&self.inner).get() }
+    fn as_mut_inner(&mut self) -> &mut Inner {
+        match self.inner.as_mut() {
+            Some(inner) => unsafe { &mut *inner.get() },
+            _ => ::unreachable(),
+        }
     }
 
     #[inline]
     fn as_inner(&self) -> &Inner {
-        unsafe { &*(&self.inner).get() }
+        match self.inner.as_ref() {
+            Some(inner) => unsafe { &*inner.get() },
+            _ => ::unreachable(),
+        }
     }
 }
 
@@ -327,7 +341,7 @@ pub(super) struct Timer {
 
 impl Timer {
     #[inline]
-    pub fn new(secs: u64) -> Self {
+    pub(super) fn new(secs: u64) -> Self {
         let state = if secs == 0 {
             TimerState::Expired
         } else {
@@ -337,14 +351,14 @@ impl Timer {
     }
 
     #[inline]
-    pub fn poll(&mut self) -> Poll<(), ()> {
+    pub(super) fn poll(&mut self) -> Poll<(), ()> {
         match self.state {
-            TimerState::Scheduled(timer_id) => match super::wt_is_expired(timer_id) {
+            TimerState::Scheduled(timer_id) => match is_expired(timer_id) {
                 true => Ok(Async::Ready(())),
                 false => Ok(Async::NotReady),
             },
             TimerState::Unscheduled(dur) => {
-                let timer_id = super::wt_schedule(dur);
+                let timer_id = schedule(dur);
                 self.state = TimerState::Scheduled(timer_id);
                 Ok(Async::NotReady)
             }
@@ -354,14 +368,14 @@ impl Timer {
     }
 
     #[inline]
-    pub fn reschedule(&mut self, secs: u64) -> bool {
+    pub(super) fn reschedule(&mut self, secs: u64) -> bool {
         match self.state {
             TimerState::Scheduled(timer_id) => {
-                super::wt_reschedule(Duration::from_secs(secs), timer_id);
+                reschedule(Duration::from_secs(secs), timer_id);
                 true
             }
             TimerState::Unscheduled(dur) => {
-                let timer_id = super::wt_schedule(dur);
+                let timer_id = schedule(dur);
                 self.state = TimerState::Scheduled(timer_id);
                 true
             }
@@ -374,8 +388,46 @@ impl Timer {
 impl Drop for Timer {
     fn drop(&mut self) {
         if let TimerState::Scheduled(timer_id) = self.state {
-            super::wt_cancel(timer_id);
+            cancel(timer_id);
             self.state = TimerState::Cancelled;
         }
     }
+}
+
+#[inline]
+fn schedule(dur: Duration) -> TimerId {
+    CURRENT_LOOP.with(|eloop| {
+        let task = eloop.current_task();
+        unsafe { eloop.as_mut() }.as_mut_wheel().schedule(dur, task)
+    })
+}
+
+#[inline]
+fn reschedule(dur: Duration, timer_id: TimerId) {
+    CURRENT_LOOP.with(|eloop| {
+        unsafe { eloop.as_mut() }
+            .as_mut_wheel()
+            .reschedule(dur, timer_id)
+    })
+}
+
+#[inline]
+fn cancel(timer_id: TimerId) {
+    CURRENT_LOOP.with(|eloop| {
+        unsafe { eloop.as_mut() }.as_mut_wheel().cancel(timer_id)
+    })
+}
+
+#[inline]
+fn is_expired(timer_id: TimerId) -> bool {
+    CURRENT_LOOP.with(|eloop| eloop.as_wheel().is_expired(timer_id))
+}
+
+#[inline]
+fn run_expired_task(task_id: TaskId) -> bool {
+    CURRENT_LOOP.with(|eloop| {
+        unsafe { eloop.as_mut() }
+            .as_mut_task_runner()
+            .run_task(task_id)
+    })
 }

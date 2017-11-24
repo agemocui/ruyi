@@ -1,11 +1,12 @@
-extern crate ruyi;
 extern crate futures;
+extern crate ruyi;
 
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::Duration;
 
 use futures::{future, Async, Future, Poll};
-use ruyi::reactor::{self, Gate, IntoTask, Timer};
+use ruyi::IntoTask;
+use ruyi::reactor::{self, Gate, Timer};
 
 
 static COUNT: AtomicUsize = ATOMIC_USIZE_INIT;
@@ -18,7 +19,7 @@ struct GateHolder {
 impl GateHolder {
     fn with_gate() -> Self {
         GateHolder {
-            _gate: Some(reactor::gate().unwrap()),
+            _gate: Some(Gate::new().unwrap()),
             timer: Timer::new(Duration::from_millis(200)),
         }
     }

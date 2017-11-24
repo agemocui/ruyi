@@ -120,12 +120,10 @@ where
         match self.future_mut().poll() {
             Ok(Async::NotReady) => match self.timer.poll() {
                 Ok(Async::NotReady) => Ok(Async::NotReady),
-                Ok(Async::Ready(())) => {
-                        match self.future.take() {
-                            Some(f) => Err(TimeoutError::new(f).into()),
-                            None => ::unreachable(),
-                        }
-                    }
+                Ok(Async::Ready(())) => match self.future.take() {
+                    Some(f) => Err(TimeoutError::new(f).into()),
+                    None => ::unreachable(),
+                },
                 _ => ::unreachable(),
             },
             ready => ready,
@@ -189,12 +187,10 @@ where
         match self.stream_mut().poll() {
             Ok(Async::NotReady) => match self.timer.poll() {
                 Ok(Async::NotReady) => Ok(Async::NotReady),
-                Ok(Async::Ready(())) => {
-                        match self.stream.take() {
-                            Some(s) => Err(TimeoutError::new(s).into()),
-                            None => ::unreachable(),
-                        }
-                    }
+                Ok(Async::Ready(())) => match self.stream.take() {
+                    Some(s) => Err(TimeoutError::new(s).into()),
+                    None => ::unreachable(),
+                },
                 _ => ::unreachable(),
             },
             Ok(Async::Ready(Some(v))) => match self.timer.reschedule(self.secs) {
@@ -209,10 +205,10 @@ where
     }
 }
 
-impl<F, E> future::Timeout for F
+impl<F> future::Timeout for F
 where
-    F: Future<Error = E>,
-    E: From<TimeoutError<F>>,
+    F: Future,
+    F::Error: From<TimeoutError<F>>,
 {
     type Future = TimeoutFuture<F>;
 
@@ -221,10 +217,10 @@ where
     }
 }
 
-impl<S, E> stream::Timeout for S
+impl<S> stream::Timeout for S
 where
-    S: Stream<Error = E>,
-    E: From<TimeoutError<S>>,
+    S: Stream,
+    S::Error: From<TimeoutError<S>>,
 {
     type Stream = TimeoutStream<S>;
 

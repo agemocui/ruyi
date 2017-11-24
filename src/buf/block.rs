@@ -23,7 +23,7 @@ impl Drop for Alloc {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct Block {
+pub(crate) struct Block {
     ptr: *mut u8,
     cap: usize,
     read_pos: usize,
@@ -81,11 +81,6 @@ impl Block {
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr
-    }
-
-    #[inline]
-    pub fn mut_ptr_at(&mut self, off: usize) -> *mut u8 {
-        unsafe { self.ptr.offset(off as isize) }
     }
 
     #[inline]

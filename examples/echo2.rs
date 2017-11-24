@@ -1,37 +1,50 @@
+extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate env_logger;
 
-extern crate num_cpus;
 extern crate futures;
+extern crate num_cpus;
 extern crate ruyi;
 
+use std::io;
 use std::thread;
 
-use futures::{future, Future};
+use futures::{Future, Sink};
 
-use ruyi::io;
-use ruyi::reactor::{IntoTask, Task};
+use ruyi::{IntoTask, Task};
+use ruyi::net::tcp::split;
 use ruyi::service::tcp::{self, Handler, Session};
 
 #[derive(Clone)]
 struct Echo;
 
+impl Echo {
+    #[inline]
+    fn task(session: Session) -> io::Result<Task> {
+        session.as_ref().set_nodelay(true)?;
+        let (r, w) = split(session)?;
+        let task = w.send_all(r).map_err(|e| error!("{}", e)).into_task();
+        Ok(task)
+    }
+}
+
 impl Handler for Echo {
-    fn handle(&mut self, session: Session) -> Task {
-        future::result(session.set_nodelay(true))
-            .and_then(|_| {
-                let (r, w) = io::split(session);
-                io::copy(r, w)
-            })
-            .map_err(|e| error!("{}", e))
-            .into_task()
+    fn handle(&mut self, session: Session) -> Option<Task> {
+        match Self::task(session) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                error!("{}", e);
+                None
+            }
+        }
     }
 }
 
 fn main() {
     // Initialize logger
     env_logger::init().unwrap();
+
+    ruyi::net::init();
 
     let n = num_cpus::get();
     match tcp::Server::with_handler(Echo)

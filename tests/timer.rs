@@ -17,9 +17,8 @@ fn into_millis(dur: Duration) -> u64 {
 }
 
 #[test]
-#[ignore]
 fn sleep() {
-    const TIMEOUT: u64 = 10;
+    const TIMEOUT: u64 = 3;
     let start = Instant::now();
     let sleep = reactor::sleep(TIMEOUT).then(|e| {
         assert_eq!(e.is_ok(), true);
@@ -38,20 +37,19 @@ fn sleep() {
 }
 
 #[test]
-#[ignore]
 fn timer() {
     const TIMEOUT: u64 = 100;
     let start = Instant::now();
     let sleep = Timer::new(Duration::from_millis(TIMEOUT)).then(|res| {
         assert_eq!(res.is_ok(), true);
         let elapsed = Instant::now() - start;
-        if into_millis(elapsed) < TIMEOUT - 1 {
+        if into_millis(elapsed) < TIMEOUT {
             Err(format!(
                 "Expect elapsed({:?}) >= {}ms",
                 elapsed,
                 TIMEOUT - 1
             ))
-        } else if into_millis(elapsed) > TIMEOUT + 1 {
+        } else if into_millis(elapsed) > TIMEOUT + 20 {
             Err(format!(
                 "Expect elapsed({:?}) <= {}ms",
                 elapsed,

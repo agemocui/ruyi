@@ -18,10 +18,10 @@ use std::thread::{self, JoinHandle};
 use futures::{Future, Stream};
 
 use channel::err::SendError;
-use channel::spsc::{self, SyncSender};
-use net::{TcpListener, TcpListenerBuilder};
-use stream::IntoStream;
-use reactor::{self, IntoTask};
+use channel::spsc::{self, Receiver, SyncSender};
+use net::{TcpListener, TcpListenerBuilder, TcpStream};
+use reactor;
+use task::{IntoTask, Task};
 
 struct Inner {
     name: String,
@@ -45,14 +45,9 @@ impl Inner {
                 let conn_count = conn_count.clone();
                 let to_handler = to_handler.clone();
                 thread::spawn(move || {
-                    let mut handler = to_handler.to_handler();
-                    let handle = rx.into_stream().for_each(|(conn, peer_addr)| {
-                        let session = Session::new(conn, Some(peer_addr), unsafe {
-                            mem::transmute(conn_count.as_ref())
-                        });
-                        Ok(reactor::spawn(handler.handle(session)))
-                    });
-                    reactor::run(handle).map_err(|e| error!("{}", e)).ok();
+                    Self::handle(rx, conn_count, to_handler)
+                        .map_err(|e| error!("{}", e))
+                        .ok();
                 })
             };
             let worker = Worker::new(tx, join_handle, conn_count);
@@ -61,12 +56,32 @@ impl Inner {
     }
 
     #[inline]
-    fn run(mut self) {
+    fn handle<H>(
+        rx: Receiver<TcpStream>,
+        conn_count: Arc<AtomicUsize>,
+        to_handler: Arc<H>,
+    ) -> io::Result<()>
+    where
+        H: ToHandler + Send + Sync + 'static,
+    {
+        let mut handler = to_handler.to_handler();
+        let handle = rx.recv()?.for_each(|conn| {
+            let session = Session::new(conn, unsafe { mem::transmute(conn_count.as_ref()) });
+            if let Some(t) = handler.handle(session) {
+                reactor::spawn(t);
+            }
+            Ok(())
+        });
+        reactor::run(handle)
+    }
+
+    #[inline]
+    fn run(mut self) -> io::Result<Task> {
         info!("{} started", self);
-        let run = self.listener
+        let task = self.listener
             .take()
             .unwrap()
-            .incoming()
+            .incoming()?
             .for_each(move |(s, a)| {
                 let mut idx = self.idx;
                 loop {
@@ -75,7 +90,7 @@ impl Inner {
                     if worker.conn_count() < self.worker_conns {
                         self.idx = idx;
                         worker
-                            .send(s, a)
+                            .send(s)
                             .map_err(|e| error!("Error dispatch connection from {}: {:?}", a, e))
                             .ok();
                         worker.inc_conn_count();
@@ -95,30 +110,28 @@ impl Inner {
             })
             .map_err(|e| error!("{}", e))
             .into_task();
-        reactor::spawn(run);
+        Ok(task)
     }
 
     #[inline]
-    fn run_single<H>(mut self, to_handler: Arc<H>)
+    fn run_single<H>(mut self, to_handler: Arc<H>) -> io::Result<Task>
     where
         H: ToHandler + Send + Sync + 'static,
     {
         info!("{} started", self);
         let mut handler = to_handler.to_handler();
         let conn_count = AtomicUsize::new(0);
-        let run = self.listener
+        let task = self.listener
             .take()
             .unwrap()
-            .incoming()
-            .for_each(move |(conn, peer_addr)| {
+            .incoming()?
+            .for_each(move |(conn, _)| {
                 let n = conn_count.fetch_add(1, Ordering::Relaxed);
                 if self.worker_conns > n {
-                    let session = Session::new(
-                        conn,
-                        Some(peer_addr),
-                        unsafe { mem::transmute(&conn_count) },
-                    );
-                    reactor::spawn(handler.handle(session));
+                    let session = Session::new(conn, unsafe { mem::transmute(&conn_count) });
+                    if let Some(t) = handler.handle(session) {
+                        reactor::spawn(t);
+                    }
                 } else {
                     warn!(
                         "{} drops {} to not exceed worker_conns {}",
@@ -131,7 +144,7 @@ impl Inner {
             })
             .map_err(|e| error!("{}", e))
             .into_task();
-        reactor::spawn(run);
+        Ok(task)
     }
 }
 
@@ -238,20 +251,25 @@ where
             Err(SendError::Disconnected(..)) => ::unreachable(),
         }
         let join_handle = thread::spawn(move || {
-            let server = rx.into_stream().for_each(|(mut inner, h)| {
-                if inner.mask == 0 {
-                    inner.run_single(h);
-                } else {
-                    inner.init(h);
-                    inner.run();
-                }
-                Ok(())
-            });
-            reactor::run(server).map_err(|e| error!("{}", e)).ok();
+            Self::run(rx).map_err(|e| error!("{}", e)).ok();
         });
         self.tx = Some(tx);
         self.join_handle = Some(join_handle);
         Ok(())
+    }
+
+    #[inline]
+    fn run(rx: Receiver<(Inner, Arc<H>)>) -> io::Result<()> {
+        let server = rx.recv()?.for_each(|(mut inner, h)| {
+            if inner.mask == 0 {
+                reactor::spawn(inner.run_single(h)?);
+            } else {
+                inner.init(h);
+                reactor::spawn(inner.run()?);
+            }
+            Ok(())
+        });
+        reactor::run(server)
     }
 }
 
