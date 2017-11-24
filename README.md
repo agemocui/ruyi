@@ -5,6 +5,7 @@ Ruyi is an event-driven framework for non-blocking, asynchronous I/O in Rust pow
 [![crates.io](https://img.shields.io/crates/v/ruyi.svg)](https://crates.io/crates/ruyi)
 [![docs.rs](https://docs.rs/ruyi/badge.svg)](https://docs.rs/ruyi)
 [![Build Status](https://travis-ci.org/agemocui/ruyi.svg?branch=master)](https://travis-ci.org/agemocui/ruyi)
+[![Build status](https://ci.appveyor.com/api/projects/status/1n42qboyvvhch3ce?svg=true)](https://ci.appveyor.com/project/agemocui/ruyi)
 
 ## Usage
 
