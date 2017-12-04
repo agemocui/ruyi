@@ -61,7 +61,8 @@ impl<'a> GetBlock<'a> {
 
 impl<'a> GetIter<'a> {
     pub fn len(&self) -> usize {
-        let init_val = unsafe { self.blocks.get_unchecked(self.idx).len() - self.init_pos };
+        let init_val =
+            unsafe { self.blocks.get_unchecked(self.idx).len() - self.init_pos };
         self.blocks[self.idx + 1..]
             .iter()
             .fold(0, |remaining, b| remaining + b.len()) + init_val

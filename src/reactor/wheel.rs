@@ -413,9 +413,7 @@ fn reschedule(dur: Duration, timer_id: TimerId) {
 
 #[inline]
 fn cancel(timer_id: TimerId) {
-    CURRENT_LOOP.with(|eloop| {
-        unsafe { eloop.as_mut() }.as_mut_wheel().cancel(timer_id)
-    })
+    CURRENT_LOOP.with(|eloop| unsafe { eloop.as_mut() }.as_mut_wheel().cancel(timer_id))
 }
 
 #[inline]

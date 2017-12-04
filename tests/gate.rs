@@ -50,9 +50,8 @@ impl Future for GateHolder {
 
 #[test]
 fn gate() {
-    let task_without_gate = future::ok::<(), ()>(()).and_then(|_| {
-        Ok(reactor::spawn(GateHolder::without_gate().into_task()))
-    });
+    let task_without_gate = future::ok::<(), ()>(())
+        .and_then(|_| Ok(reactor::spawn(GateHolder::without_gate().into_task())));
     reactor::run(task_without_gate).unwrap();
     assert_eq!(COUNT.load(Ordering::Relaxed), 0);
 

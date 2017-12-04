@@ -8,11 +8,10 @@ use std::rc::Rc;
 use winapi;
 use kernel32;
 
-use task::TaskId;
-use sys::{ReadyTasks, Token};
+use reactor::CURRENT_LOOP;
+use sys::{ReadyTasks, Schedule, Token};
 use sys::nio::{Borrow, BorrowMut};
 use sys::windows::poll::{Event, Ops};
-use reactor::CURRENT_LOOP;
 
 pub trait AsRawHandle {
     fn as_raw_handle(&self) -> winapi::HANDLE;
@@ -174,29 +173,35 @@ impl<H, T> Nio<H, T> {
 
     #[inline]
     pub fn is_read_ready(&self) -> bool {
-        self.token.is_read_ready()
+        CURRENT_LOOP.with(|current_loop| {
+            let eloop = current_loop.as_inner();
+            let schedule = unsafe { eloop.get_schedule_unchecked(self.token) };
+            schedule.is_read_ready()
+        })
     }
 
     #[inline]
     pub fn is_write_ready(&self) -> bool {
-        self.token.is_write_ready()
+        CURRENT_LOOP.with(|current_loop| {
+            let eloop = current_loop.as_inner();
+            let schedule = unsafe { eloop.get_schedule_unchecked(self.token) };
+            schedule.is_write_ready()
+        })
     }
 
     #[inline]
     pub fn schedule_read(&self) {
-        CURRENT_LOOP.with(|eloop| {
-            unsafe { eloop.as_mut() }
-                .as_mut_inner()
-                .reschedule(&self.token, Ops::READ);
+        CURRENT_LOOP.with(|current_loop| {
+            let eloop = unsafe { current_loop.as_mut() };
+            eloop.as_mut_inner().schedule_read(self.token);
         })
     }
 
     #[inline]
     pub fn schedule_write(&self) {
-        CURRENT_LOOP.with(|eloop| {
-            unsafe { eloop.as_mut() }
-                .as_mut_inner()
-                .reschedule(&self.token, Ops::WRITE);
+        CURRENT_LOOP.with(|current_loop| {
+            let eloop = unsafe { current_loop.as_mut() };
+            eloop.as_mut_inner().schedule_write(self.token);
         })
     }
 }
@@ -229,11 +234,11 @@ where
 
         CURRENT_LOOP.with(|current_loop| {
             let eloop = unsafe { current_loop.as_mut() }.as_mut_inner();
-            let token = eloop.schedule(Ops::empty());
-            match eloop.as_poller().register(handle, token.as_inner()) {
+            let token = eloop.schedule();
+            match eloop.as_poller().register(handle, token) {
                 Ok(()) => Ok(token),
                 Err(e) => {
-                    eloop.cancel(&token);
+                    eloop.cancel(token);
                     Err(e)
                 }
             }
@@ -245,7 +250,7 @@ impl<H, T> Drop for Nio<H, T> {
     #[inline]
     fn drop(&mut self) {
         CURRENT_LOOP.with(|eloop| {
-            unsafe { eloop.as_mut() }.as_mut_inner().cancel(&self.token);
+            unsafe { eloop.as_mut() }.as_mut_inner().cancel(self.token);
         })
     }
 }
@@ -265,13 +270,15 @@ impl<H, T> BorrowMut<Nio<H, T>> for Rc<UnsafeCell<Nio<H, T>>> {
 }
 
 #[inline]
-pub(in sys) fn get_ready_tasks(
-    event: &Event,
-    read_task: TaskId,
-    write_task: TaskId,
-) -> (ReadyTasks, Ops) {
+pub(in sys) fn get_ready_tasks(event: &Event, schedule: &mut Schedule) -> ReadyTasks {
     match event.is_read() {
-        true => (ReadyTasks::Single(read_task), Ops::READ),
-        false => (ReadyTasks::Single(write_task), Ops::WRITE),
+        true => {
+            schedule.set_read_ready(true);
+            ReadyTasks::Single(schedule.read_task())
+        }
+        false => {
+            schedule.set_write_ready(true);
+            ReadyTasks::Single(schedule.write_task())
+        }
     }
 }

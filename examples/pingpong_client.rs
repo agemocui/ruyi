@@ -153,13 +153,13 @@ fn ping_pong(addr: &SocketAddr, len: usize, vars: &'static mut Vars) -> Task {
                     let (r, w) = s.into_2way();
                     let mut data = Vec::<u8>::with_capacity(len);
                     unsafe { data.set_len(len) };
-                    w.send_all(stream::once(Ok(ByteBuf::from(data))).chain(
-                        r.filter(move |b| {
+                    w.send_all(
+                        stream::once(Ok(ByteBuf::from(data))).chain(r.filter(move |b| {
                             vars.msgs += 1;
                             vars.bytes += b.len();
                             true
-                        }),
-                    ))
+                        })),
+                    )
                 })
         })
         .map_err(|e| error!("{}", e))

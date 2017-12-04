@@ -28,7 +28,7 @@ impl Event {
     }
 
     #[inline]
-    pub fn is_read(&self) -> bool {
+    pub(super) fn is_read(&self) -> bool {
         let overlapped: &Overlapped = unsafe { mem::transmute(self.inner.lpOverlapped) };
         overlapped.is_read()
     }

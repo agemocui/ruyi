@@ -7,7 +7,7 @@ use libc;
 use sys::unix::err::cvt;
 
 bitflags! {
-    pub struct Ops: u32 {
+    pub(super) struct Ops: u32 {
         const READ      = libc::EPOLLIN as u32;
         const WRITE     = libc::EPOLLOUT as u32;
     }
@@ -35,12 +35,12 @@ impl Event {
     }
 
     #[inline]
-    pub fn is_read(&self) -> bool {
+    pub(in sys::unix) fn is_read(&self) -> bool {
         (self.inner.events & Ops::READ.bits()) == Ops::READ.bits()
     }
 
     #[inline]
-    pub fn is_write(&self) -> bool {
+    pub(in sys::unix) fn is_write(&self) -> bool {
         (self.inner.events & Ops::WRITE.bits()) == Ops::WRITE.bits()
     }
 }
@@ -66,33 +66,35 @@ impl Poller {
             None => -1,
         };
         let res = unsafe { libc::epoll_wait(self.epfd, event_ptr, len, millis) };
-        let n = cvt(res)? as usize;
-        Ok((n))
+        Ok(cvt(res)? as usize)
     }
 
     #[inline]
-    pub(in sys::unix) fn register<T>(&self, fd: RawFd, ops: Ops, token: T) -> io::Result<()>
+    pub(super) fn register<T>(&self, fd: RawFd, ops: Ops, token: T) -> io::Result<()>
     where
         T: Into<usize>,
     {
         let mut ev = Event::new(ops, token.into());
-        let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut ev.inner) };
+        let res =
+            unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_ADD, fd, &mut ev.inner) };
         cvt(res).map(drop)
     }
 
     #[inline]
-    pub fn reregister<T>(&self, fd: RawFd, ops: Ops, token: T) -> io::Result<()>
+    pub(super) fn reregister<T>(&self, fd: RawFd, ops: Ops, token: T) -> io::Result<()>
     where
         T: Into<usize>,
     {
         let mut ev = Event::new(ops, token.into());
-        let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_MOD, fd, &mut ev.inner) };
+        let res =
+            unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_MOD, fd, &mut ev.inner) };
         cvt(res).map(drop)
     }
 
     #[inline]
-    pub fn deregister(&self, fd: RawFd) -> io::Result<()> {
-        let res = unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, ptr::null_mut()) };
+    pub(super) fn deregister(&self, fd: RawFd) -> io::Result<()> {
+        let res =
+            unsafe { libc::epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, ptr::null_mut()) };
         cvt(res).map(drop)
     }
 }

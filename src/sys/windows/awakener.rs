@@ -8,7 +8,6 @@ use reactor::CURRENT_LOOP;
 
 use sys::{AtomicBool, Token};
 use sys::windows::nio::{AsRawHandle, Overlapped};
-use sys::windows::poll::Ops;
 
 pub(crate) struct Awakener {
     need_wakeup: AtomicBool,
@@ -51,7 +50,7 @@ impl Awakener {
         let (iocp, token) = CURRENT_LOOP.with(|current_loop| {
             let eloop = unsafe { current_loop.as_mut() }.as_mut_inner();
             let iocp = eloop.as_poller().as_raw_handle();
-            let token = eloop.schedule(Ops::empty());
+            let token = eloop.schedule();
             (iocp, token)
         });
         *self.as_mut_nio() = Some((iocp, token));
@@ -60,11 +59,12 @@ impl Awakener {
     #[inline]
     fn post_queued_completion_status(&self) -> io::Result<()> {
         if let Some(ref nio) = (*self.as_nio()).as_ref() {
+            let token: usize = nio.1.into();
             let result = unsafe {
                 kernel32::PostQueuedCompletionStatus(
                     nio.0,
                     0,
-                    nio.1.as_inner() as winapi::ULONG_PTR,
+                    token as winapi::ULONG_PTR,
                     self.as_mut_overlapped().as_mut(),
                 )
             };
@@ -94,9 +94,7 @@ impl Awakener {
 impl Drop for Awakener {
     fn drop(&mut self) {
         if let Some(ref nio) = (*self.as_nio()).as_ref() {
-            CURRENT_LOOP.with(|eloop| {
-                unsafe { eloop.as_mut() }.as_mut_inner().cancel(&nio.1)
-            })
+            CURRENT_LOOP.with(|eloop| unsafe { eloop.as_mut() }.as_mut_inner().cancel(nio.1))
         }
     }
 }

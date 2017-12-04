@@ -1,12 +1,11 @@
 use std::fmt;
 use std::io;
-use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::time::Duration;
 
 use slab::{self, Slab};
-use sys::poll::{Event, Ops, Poller};
 use task::{Task, TaskId};
+use sys::poll::{Event, Poller};
 
 #[allow(dead_code)]
 pub(crate) enum ReadyTasks {
@@ -14,45 +13,74 @@ pub(crate) enum ReadyTasks {
     Pair(TaskId, TaskId),
 }
 
-#[derive(Clone)]
-pub(super) struct Token {
-    inner: usize,
-    ready_ops: &'static Ops,
-}
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Token(usize);
 
-impl Token {
+impl From<Token> for usize {
     #[inline]
-    pub(super) fn as_inner(&self) -> usize {
-        self.inner
-    }
-
-    #[inline]
-    pub(super) fn is_read_ready(&self) -> bool {
-        self.ready_ops.contains(Ops::READ)
-    }
-
-    #[inline]
-    pub(super) fn is_write_ready(&self) -> bool {
-        self.ready_ops.contains(Ops::WRITE)
-    }
-}
-
-impl fmt::Debug for Token {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Token {{ inner: {}, ready_ops: {:?} }}",
-            self.inner,
-            *self.ready_ops
-        )
+    fn from(token: Token) -> Self {
+        token.0
     }
 }
 
 #[derive(Debug)]
-struct Schedule {
+pub(super) struct Schedule {
     read_task: TaskId,
     write_task: TaskId,
-    ready_ops: Ops,
+    read_ready: bool,
+    write_ready: bool,
+}
+
+impl Schedule {
+    #[inline]
+    pub fn new(task: TaskId) -> Self {
+        Schedule {
+            read_task: task,
+            write_task: task,
+            read_ready: true,
+            write_ready: true,
+        }
+    }
+
+    #[inline]
+    pub fn read_task(&self) -> TaskId {
+        self.read_task
+    }
+
+    #[inline]
+    pub fn write_task(&self) -> TaskId {
+        self.write_task
+    }
+
+    #[inline]
+    pub fn set_read_task(&mut self, task: TaskId) {
+        self.read_task = task;
+    }
+
+    #[inline]
+    pub fn set_write_task(&mut self, task: TaskId) {
+        self.write_task = task;
+    }
+
+    #[inline]
+    pub fn is_read_ready(&self) -> bool {
+        self.read_ready
+    }
+
+    #[inline]
+    pub fn is_write_ready(&self) -> bool {
+        self.write_ready
+    }
+
+    #[inline]
+    pub fn set_read_ready(&mut self, ready: bool) {
+        self.read_ready = ready;
+    }
+
+    #[inline]
+    pub fn set_write_ready(&mut self, ready: bool) {
+        self.write_ready = ready;
+    }
 }
 
 pub(crate) struct EventLoop {
@@ -80,10 +108,7 @@ impl EventLoop {
     #[inline]
     pub(crate) fn get_ready_tasks(&mut self, event: &Event) -> ReadyTasks {
         let schedule = unsafe { self.schedules.get_unchecked_mut(event.token()) };
-        let (ready_tasks, ready_ops) =
-            super::get_ready_tasks(event, schedule.read_task, schedule.write_task);
-        schedule.ready_ops |= ready_ops;
-        ready_tasks
+        super::get_ready_tasks(event, schedule)
     }
 
     #[inline]
@@ -123,19 +148,9 @@ impl EventLoop {
         events: &mut Vec<Event>,
         timeout: Option<Duration>,
     ) -> io::Result<()> {
-        let mut cap = events.capacity();
-        if events.len() == cap {
-            // double the capacity
-            events.reserve_exact(cap);
-            cap = events.capacity();
-        }
+        let cap = events.capacity();
         unsafe { events.set_len(cap) };
-        let n = self.as_poller()
-            .poll(events.as_mut_slice(), timeout)
-            .or_else(|e| {
-                unsafe { events.set_len(0) };
-                Err(e)
-            })?;
+        let n = self.as_poller().poll(events.as_mut_slice(), timeout)?;
         unsafe { events.set_len(n) };
         Ok(())
     }
@@ -146,31 +161,46 @@ impl EventLoop {
     }
 
     #[inline]
-    pub(super) fn schedule(&mut self, ops: Ops) -> Token {
-        let inner = self.schedules.insert(Schedule {
-            read_task: self.current_task,
-            write_task: self.current_task,
-            ready_ops: Ops::all() ^ ops,
-        });
-        let ready_ops = unsafe { mem::transmute(&self.schedules.get_unchecked(inner).ready_ops) };
-        Token { inner, ready_ops }
+    pub(super) fn schedule(&mut self) -> Token {
+        Token(self.schedules.insert(Schedule::new(self.current_task)))
     }
 
     #[inline]
-    pub(super) fn reschedule(&mut self, token: &Token, new_ops: Ops) {
-        let schedule = unsafe { self.schedules.get_unchecked_mut(token.as_inner()) };
-        schedule.ready_ops &= Ops::all() ^ new_ops;
-        if new_ops.contains(Ops::READ) {
-            schedule.read_task = self.current_task;
-        }
-        if new_ops.contains(Ops::WRITE) {
-            schedule.write_task = self.current_task;
-        }
+    pub(super) fn schedule_read(&mut self, token: Token) {
+        let schedule = unsafe { self.schedules.get_unchecked_mut(token.into()) };
+        schedule.set_read_ready(false);
+        schedule.set_read_task(self.current_task);
     }
 
     #[inline]
-    pub(super) fn cancel(&mut self, token: &Token) {
-        self.schedules.remove(token.as_inner());
+    pub(super) fn schedule_write(&mut self, token: Token) {
+        let schedule = unsafe { self.schedules.get_unchecked_mut(token.into()) };
+        schedule.set_write_ready(false);
+        schedule.set_write_task(self.current_task);
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub(super) fn cancel_read(&mut self, token: Token) {
+        let schedule = unsafe { self.schedules.get_unchecked_mut(token.into()) };
+        schedule.set_read_ready(true);
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub(super) fn cancel_write(&mut self, token: Token) {
+        let schedule = unsafe { self.schedules.get_unchecked_mut(token.into()) };
+        schedule.set_write_ready(true);
+    }
+
+    #[inline]
+    pub(super) fn cancel(&mut self, token: Token) {
+        self.schedules.remove(token.into());
+    }
+
+    #[inline]
+    pub(super) unsafe fn get_schedule_unchecked(&self, token: Token) -> &Schedule {
+        self.schedules.get_unchecked(token.into())
     }
 }
 

@@ -211,11 +211,13 @@ impl Incoming {
     #[inline]
     fn new_sock(&self) -> io::Result<TcpStream> {
         const IPPROTO_TCP: winapi::c_int = 6;
-        let accept_sock = unsafe { ws2_32::socket(self.family, winapi::SOCK_STREAM, IPPROTO_TCP) };
+        let accept_sock =
+            unsafe { ws2_32::socket(self.family, winapi::SOCK_STREAM, IPPROTO_TCP) };
         if accept_sock == winapi::INVALID_SOCKET {
             return Err(last_error());
         }
-        let stream = unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock)) };
+        let stream =
+            unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock)) };
         Ok(stream)
     }
 }

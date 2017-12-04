@@ -58,6 +58,11 @@ impl TaskRunner {
                     },
                 }
             }
+            let n = events.len();
+            unsafe { events.set_len(0) };
+            if n == events.capacity() {
+                events.reserve_exact(n + n); // double the capacity
+            }
         }
     }
 
@@ -193,6 +198,11 @@ impl EventLoop {
     #[inline]
     pub(crate) unsafe fn as_mut(&self) -> &mut Self {
         mem::transmute(self as *const Self as *mut Self)
+    }
+
+    #[inline]
+    pub(crate) fn as_inner(&self) -> &sys::EventLoop {
+        &self.runner.inner
     }
 
     #[inline]

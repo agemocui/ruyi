@@ -123,9 +123,7 @@ impl<T> Drop for RingBuffer<T> {
         while let Some(t) = self.try_pop() {
             drop(t);
         }
-        drop(unsafe {
-            Vec::from_raw_parts(self.buf_ptr, 0, self.alloc_cap)
-        });
+        drop(unsafe { Vec::from_raw_parts(self.buf_ptr, 0, self.alloc_cap) });
     }
 }
 
