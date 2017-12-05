@@ -21,7 +21,7 @@ impl Event {
     #[inline]
     fn new(
         ident: RawFd,
-        filter: libc::int16_t,
+        filter: Filter,
         flags: libc::uint16_t,
         fflags: libc::uint32_t,
         data: libc::intptr_t,
@@ -30,7 +30,7 @@ impl Event {
         Event {
             inner: libc::kevent {
                 ident: ident as libc::uintptr_t,
-                filter,
+                filter: filter as FilterType,
                 flags,
                 fflags,
                 data,
@@ -92,7 +92,7 @@ impl Poller {
     where
         T: Into<usize>,
     {
-        let event = Event::new(fd, filter as FilterType, libc::EV_ADD, 0, 0, token.into());
+        let event = Event::new(fd, filter, libc::EV_ADD, 0, 0, token.into());
         let res = unsafe {
             libc::kevent(
                 self.kq,
@@ -112,14 +112,7 @@ impl Poller {
     where
         T: Into<usize>,
     {
-        let event = Event::new(
-            fd,
-            filter as FilterType,
-            libc::EV_DELETE,
-            0,
-            0,
-            token.into(),
-        );
+        let event = Event::new(fd, filter, libc::EV_DELETE, 0, 0, token.into());
         let res = unsafe {
             libc::kevent(
                 self.kq,

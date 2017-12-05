@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use reactor::CURRENT_LOOP;
-use task::TaskId;
 use sys::{ReadyTasks, Schedule, Token};
 use sys::unix::linux::poll::{Event, Ops};
 

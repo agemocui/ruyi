@@ -16,7 +16,6 @@ impl<T> Recv<T> {
         buffer: Arc<RingBuffer<T>>,
         awakener: ReceiverAwakener,
     ) -> io::Result<Self> {
-        // The safer way is to register awakener to event loop in Awakener.reset()
         awakener.as_inner().register();
         Ok(Recv {
             awakener,

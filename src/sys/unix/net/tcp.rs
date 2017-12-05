@@ -15,6 +15,7 @@ use net::{TcpListener, TcpStream};
 use sys::nio::BorrowMut;
 use sys::unix::err::cvt;
 use sys::unix::nio::{IoVec, Nio, Readv, Writev};
+use sys::unix::syscall::{accept, socket_v4, socket_v6};
 
 ////////////////////////////////////////////////////////////////////////////////
 // TcpListener
@@ -40,8 +41,11 @@ impl Incoming {
 
     #[inline]
     pub(crate) fn poll_accept(&mut self) -> Poll<Option<(TcpStream, SocketAddr)>, io::Error> {
-        match Self::accept(self.nio.get_ref()) {
-            Ok((s, a)) => Ok(Async::Ready(Some((s, a)))),
+        match accept(self.nio.get_ref().as_raw_fd()) {
+            Ok((s, a)) => Ok(Async::Ready(Some((
+                unsafe { TcpStream::from_raw_fd(s) },
+                a,
+            )))),
             Err(e) => match e.kind() {
                 io::ErrorKind::WouldBlock => {
                     self.nio.schedule_read()?;
@@ -50,24 +54,6 @@ impl Incoming {
                 _ => Err(e),
             },
         }
-    }
-
-    #[inline]
-    fn accept(listener: &TcpListener) -> io::Result<(TcpStream, SocketAddr)> {
-        let mut storage: libc::sockaddr_storage = unsafe { mem::uninitialized() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-        let res = unsafe {
-            libc::accept4(
-                listener.as_raw_fd(),
-                &mut storage as *mut _ as *mut _,
-                &mut len,
-                libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-            )
-        };
-        let fd = cvt(res)?;
-        let sock = unsafe { TcpStream::from_raw_fd(fd) };
-        let addr = super::sockaddr_to_addr(&storage, len as usize)?;
-        Ok((sock, addr))
     }
 }
 
@@ -522,41 +508,15 @@ where
     }
 
     #[inline]
-    fn new_v4() -> io::Result<TcpStream> {
-        let res = unsafe {
-            libc::socket(
-                libc::AF_INET,
-                libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-                0,
-            )
-        };
-        let fd = cvt(res)?;
-        Ok(unsafe { TcpStream::from_raw_fd(fd) })
-    }
-
-    #[inline]
-    fn new_v6() -> io::Result<TcpStream> {
-        let res = unsafe {
-            libc::socket(
-                libc::AF_INET6,
-                libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-                0,
-            )
-        };
-        let fd = cvt(res)?;
-        Ok(unsafe { TcpStream::from_raw_fd(fd) })
-    }
-
-    #[inline]
     fn connect(addr: &SocketAddr) -> io::Result<ConnectState<T>> {
         let (stream, addr, len) = match *addr {
             SocketAddr::V4(ref a) => (
-                Self::new_v4()?,
+                unsafe { TcpStream::from_raw_fd(socket_v4()?) },
                 a as *const _ as *const _,
                 mem::size_of_val(a) as libc::socklen_t,
             ),
             SocketAddr::V6(ref a) => (
-                Self::new_v6()?,
+                unsafe { TcpStream::from_raw_fd(socket_v6()?) },
                 a as *const _ as *const _,
                 mem::size_of_val(a) as libc::socklen_t,
             ),

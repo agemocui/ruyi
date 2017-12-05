@@ -3,6 +3,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use libc;
 use sys::unix::err::cvt;
+use sys::unix::syscall::pipe;
 
 #[derive(Debug)]
 pub struct Awakener {
@@ -13,12 +14,8 @@ pub struct Awakener {
 impl Awakener {
     #[inline]
     pub fn new() -> io::Result<Self> {
-        let mut fds = [0 as libc::c_int; 2];
-        cvt(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) })?;
-        Ok(Awakener {
-            r_fd: fds[0],
-            w_fd: fds[1],
-        })
+        let (r_fd, w_fd) = pipe()?;
+        Ok(Awakener { r_fd, w_fd })
     }
 
     #[inline]
