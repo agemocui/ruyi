@@ -1,3 +1,7 @@
+extern crate structopt;
+#[macro_use]
+extern crate structopt_derive;
+
 extern crate env_logger;
 #[macro_use]
 extern crate log;
@@ -10,10 +14,20 @@ use std::io;
 use std::thread;
 
 use futures::{Future, Sink};
+use structopt::StructOpt;
 
 use ruyi::{IntoTask, Task};
 use ruyi::net::tcp::split;
 use ruyi::service::tcp::{self, Handler, Session};
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "echo2", about = "A program that implements Echo Protocol.")]
+struct Opt {
+    #[structopt(short = "p", long = "port", help = "Listening port to bind", default_value = "10007")]
+    port: u16,
+    #[structopt(short = "w", long = "workers", help = "Number of workers", default_value = "0")]
+    workers: usize,
+}
 
 #[derive(Clone)]
 struct Echo;
@@ -41,15 +55,19 @@ impl Handler for Echo {
 }
 
 fn main() {
+    let mut opt = Opt::from_args();
+
     // Initialize logger
     env_logger::init().unwrap();
 
     ruyi::net::init();
 
-    let n = num_cpus::get();
+    if opt.workers < 1 {
+        opt.workers = num_cpus::get();
+    }
     match tcp::Server::with_handler(Echo)
-        .port(10007)
-        .num_of_workers(n)
+        .port(opt.port)
+        .num_of_workers(opt.workers)
         .start()
     {
         Ok(()) => thread::park(),

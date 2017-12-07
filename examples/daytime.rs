@@ -1,7 +1,10 @@
+extern crate structopt;
 #[macro_use]
-extern crate log;
+extern crate structopt_derive;
 
 extern crate env_logger;
+#[macro_use]
+extern crate log;
 
 extern crate chrono;
 extern crate futures;
@@ -13,11 +16,21 @@ use std::thread;
 
 use chrono::prelude::Local;
 use futures::Future;
+use structopt::StructOpt;
 
 use ruyi::{IntoTask, Task};
 use ruyi::buf::ByteBuf;
 use ruyi::net::tcp::send;
 use ruyi::service::tcp::{self, Handler, Session};
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "daytime", about = "A program that implements Daytime Protocol.")]
+struct Opt {
+    #[structopt(short = "p", long = "port", help = "Listening port to bind", default_value = "10013")]
+    port: u16,
+    #[structopt(short = "w", long = "workers", help = "Number of workers", default_value = "0")]
+    workers: usize,
+}
 
 #[derive(Clone)]
 struct DayTime;
@@ -48,15 +61,20 @@ impl Handler for DayTime {
 }
 
 fn main() {
+    let mut opt = Opt::from_args();
+
     // Initialize logger
     env_logger::init().unwrap();
 
     ruyi::net::init();
 
-    let n = num_cpus::get();
+    if opt.workers < 1 {
+        opt.workers = num_cpus::get();
+    }
+
     match tcp::Server::with_handler(DayTime)
-        .port(10013)
-        .num_of_workers(n)
+        .port(opt.port)
+        .num_of_workers(opt.workers)
         .start()
     {
         Ok(()) => thread::park(),

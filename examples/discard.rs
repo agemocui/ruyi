@@ -1,3 +1,7 @@
+extern crate structopt;
+#[macro_use]
+extern crate structopt_derive;
+
 extern crate env_logger;
 #[macro_use]
 extern crate log;
@@ -10,10 +14,20 @@ use std::io;
 use std::thread;
 
 use futures::{Future, Stream};
+use structopt::StructOpt;
 
 use ruyi::{IntoTask, Task};
 use ruyi::net::tcp::recv;
 use ruyi::service::tcp::{self, Handler, Session};
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "discard", about = "A program that implements Discard Protocol.")]
+struct Opt {
+    #[structopt(short = "p", long = "port", help = "Listening port to bind", default_value = "10009")]
+    port: u16,
+    #[structopt(short = "w", long = "workers", help = "Number of workers", default_value = "0")]
+    workers: usize,
+}
 
 #[derive(Clone)]
 struct Discard;
@@ -45,15 +59,20 @@ impl Handler for Discard {
 }
 
 fn main() {
+    let mut opt = Opt::from_args();
+
     // Initialize logger
     env_logger::init().unwrap();
 
     ruyi::net::init();
 
-    let n = num_cpus::get();
+    if opt.workers < 1 {
+        opt.workers = num_cpus::get();
+    }
+
     match tcp::Server::with_handler(Discard)
-        .port(10009)
-        .num_of_workers(n)
+        .port(opt.port)
+        .num_of_workers(opt.workers)
         .start()
     {
         Ok(()) => thread::park(),
