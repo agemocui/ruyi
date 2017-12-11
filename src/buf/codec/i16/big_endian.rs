@@ -1,38 +1,27 @@
-use std::io::{self, Error};
-
-use super::super::u16;
-use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::codec::u16;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> io::Result<i16> {
-    match u16::big_endian::read(chain) {
-        Ok(r) => Ok(r as i16),
-        Err(e) => Err(Error::new(e.kind(), "codec::i16::big_endian::read")),
-    }
+pub fn read(chain: &mut ReadIter) -> Result<i16, BufError> {
+    u16::big_endian::read(chain).map(|v| v as i16)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> io::Result<i16> {
-    match u16::big_endian::get(chain) {
-        Ok(r) => Ok(r as i16),
-        Err(e) => Err(Error::new(e.kind(), "codec::i16::big_endian::get")),
-    }
+pub fn get(chain: &mut GetIter) -> Result<i16, BufError> {
+    u16::big_endian::get(chain).map(|v| v as i16)
 }
 
 #[inline]
-pub fn set(v: i16, chain: &mut SetIter) -> io::Result<usize> {
-    match u16::big_endian::set(v as u16, chain) {
-        Ok(n) => Ok(n),
-        Err(e) => Err(Error::new(e.kind(), "codec::i16::big_endian::set")),
-    }
+pub fn set(v: i16, chain: &mut SetIter) -> Result<usize, BufError> {
+    u16::big_endian::set(v as u16, chain)
 }
 
 #[inline]
-pub fn append(v: i16, chain: &mut Appender) -> io::Result<usize> {
+pub fn append(v: i16, chain: &mut Appender) -> Result<usize, ()> {
     u16::big_endian::append(v as u16, chain)
 }
 
 #[inline]
-pub fn prepend(v: i16, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend(v: i16, chain: &mut Prepender) -> Result<usize, ()> {
     u16::big_endian::prepend(v as u16, chain)
 }

@@ -12,7 +12,7 @@ use ws2_32;
 use net2::TcpBuilder;
 use futures::{Async, Poll};
 
-use buf::{Block, ByteBuf, GetIter};
+use buf::{Block, BufError, ByteBuf, GetIter};
 use net::{TcpListener, TcpStream};
 use sys::nio::BorrowMut;
 use sys::windows::net::{get_overlapped_result, last_error, ACCEPTEX, CONNECTEX,
@@ -426,7 +426,7 @@ where
 }
 
 #[inline]
-fn get_iovs(chain: &mut GetIter) -> io::Result<Vec<IoVec>> {
+fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, BufError> {
     let mut iovecs = Vec::new();
     for block in chain {
         let off = block.read_pos() as isize;
@@ -511,7 +511,7 @@ where
         data: &mut ByteBuf,
         overlapped: &mut Overlapped,
     ) -> io::Result<()> {
-        let iovs = data.get(0, get_iovs)?;
+        let iovs = data.get(0, get_iovs).unwrap();
         let n = unsafe { w.writev(iovs.as_slice(), overlapped)? };
         data.skip(n);
         Ok(())

@@ -18,6 +18,9 @@ extern crate ws2_32;
 #[macro_use]
 extern crate bitflags;
 
+#[macro_use]
+extern crate failure;
+
 extern crate net2;
 
 #[macro_use]

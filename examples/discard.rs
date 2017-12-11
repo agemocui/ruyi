@@ -23,7 +23,8 @@ use ruyi::service::tcp::{self, Handler, Session};
 #[derive(StructOpt, Debug)]
 #[structopt(name = "discard", about = "A program that implements Discard Protocol.")]
 struct Opt {
-    #[structopt(short = "p", long = "port", help = "Listening port to bind", default_value = "10009")]
+    #[structopt(short = "p", long = "port", help = "Listening port to bind",
+                default_value = "10009")]
     port: u16,
     #[structopt(short = "w", long = "workers", help = "Number of workers", default_value = "0")]
     workers: usize,

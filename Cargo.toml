@@ -18,11 +18,12 @@ exclude = [".gitignore", ".travis.yml"]
 travis-ci = { repository = "agemocui/ruyi" }
 
 [dependencies]
+bitflags = "1.0"
+failure = "0.1"
 futures = "0.1"
 log = "0.3"
 net2 = "0.2"
 unreachable = "1.0"
-bitflags = "1.0"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"

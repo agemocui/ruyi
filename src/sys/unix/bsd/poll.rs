@@ -64,11 +64,9 @@ impl Poller {
 
     #[inline]
     pub fn poll(&self, events: &mut [Event], timeout: Option<Duration>) -> io::Result<usize> {
-        let to = timeout.map(|dur| {
-            libc::timespec {
-                tv_sec: dur.as_secs() as libc::time_t,
-                tv_nsec: dur.subsec_nanos() as libc::c_long,
-            }
+        let to = timeout.map(|dur| libc::timespec {
+            tv_sec: dur.as_secs() as libc::time_t,
+            tv_nsec: dur.subsec_nanos() as libc::c_long,
         });
         let to_ptr = match to.as_ref() {
             Some(s) => s as *const libc::timespec,

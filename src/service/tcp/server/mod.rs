@@ -99,9 +99,7 @@ impl Inner {
                     if idx == self.idx {
                         warn!(
                             "{} drops {} to not exceed worker_conns {}",
-                            self,
-                            s,
-                            self.worker_conns
+                            self, s, self.worker_conns
                         );
                         break;
                     }
@@ -135,9 +133,7 @@ impl Inner {
                 } else {
                     warn!(
                         "{} drops {} to not exceed worker_conns {}",
-                        self,
-                        conn,
-                        self.worker_conns
+                        self, conn, self.worker_conns
                     );
                 }
                 Ok(())

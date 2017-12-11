@@ -70,7 +70,6 @@ pub struct Slab<T, I = usize> {
 
 unsafe impl<T: Send, I> Send for Slab<T, I> {}
 
-
 impl<T, I> Slab<T, I> {
     #[inline]
     pub fn len(&self) -> usize {

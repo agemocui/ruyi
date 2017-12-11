@@ -9,7 +9,6 @@ use task;
 use reactor::eloop::TaskRunner;
 use reactor::CURRENT_LOOP;
 
-
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TaskId {
     // index in slab Queue.tasks

@@ -1,8 +1,6 @@
-use std::io::{self, Error, ErrorKind};
+use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
 
-use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
-
-pub fn read(chain: &mut ReadIter) -> io::Result<u64> {
+pub fn read(chain: &mut ReadIter) -> Result<u64, BufError> {
     let mut v = 0u64;
     let mut shift = 0;
     for mut block in chain {
@@ -19,13 +17,10 @@ pub fn read(chain: &mut ReadIter) -> io::Result<u64> {
         }
         block.set_read_pos(write_pos);
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::varint::read",
-    ))
+    Err(BufError::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> io::Result<u64> {
+pub fn get(chain: &mut GetIter) -> Result<u64, BufError> {
     let mut v = 0u64;
     let mut shift = 0;
     for block in chain {
@@ -39,13 +34,10 @@ pub fn get(chain: &mut GetIter) -> io::Result<u64> {
             shift = shift.wrapping_add(7);
         }
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::varint::get",
-    ))
+    Err(BufError::IndexOutOfBounds)
 }
 
-pub fn set(mut v: u64, chain: &mut SetIter) -> io::Result<usize> {
+pub fn set(mut v: u64, chain: &mut SetIter) -> Result<usize, BufError> {
     let mut n = 0usize;
     for mut block in chain {
         let ptr_u8 = block.as_mut_ptr();
@@ -60,13 +52,10 @@ pub fn set(mut v: u64, chain: &mut SetIter) -> io::Result<usize> {
             v >>= 7;
         }
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::varint::set",
-    ))
+    Err(BufError::IndexOutOfBounds)
 }
 
-pub fn append(mut v: u64, chain: &mut Appender) -> io::Result<usize> {
+pub fn append(mut v: u64, chain: &mut Appender) -> Result<usize, ()> {
     let mut n = 0usize;
     loop {
         if let Some(mut block) = chain.last_mut() {
@@ -89,7 +78,7 @@ pub fn append(mut v: u64, chain: &mut Appender) -> io::Result<usize> {
     }
 }
 
-pub fn prepend(v: u64, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend(v: u64, chain: &mut Prepender) -> Result<usize, ()> {
     let mut shift = 0usize;
     while (v >> shift) > 0x7F {
         shift += 7;

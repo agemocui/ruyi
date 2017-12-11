@@ -35,8 +35,7 @@ impl fmt::Debug for IoVec {
         write!(
             f,
             "{{ iov_base: 0x{:08x}, iov_len: {} }}",
-            base,
-            self.inner.iov_len as usize
+            base, self.inner.iov_len as usize
         )
     }
 }

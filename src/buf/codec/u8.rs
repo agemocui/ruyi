@@ -1,36 +1,34 @@
-use std::io::{self, Error, ErrorKind};
-
-use super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
 
 const U8_SIZE: usize = 1;
 
-pub fn read(chain: &mut ReadIter) -> io::Result<u8> {
+pub fn read(chain: &mut ReadIter) -> Result<u8, BufError> {
     if let Some(mut block) = chain.next() {
         let off = block.read_pos();
         block.set_read_pos(off + U8_SIZE);
         return Ok(unsafe { *block.as_ptr().offset(off as isize) });
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u8::read"))
+    Err(BufError::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> io::Result<u8> {
+pub fn get(chain: &mut GetIter) -> Result<u8, BufError> {
     if let Some(block) = chain.next() {
         let off = block.read_pos() as isize;
         return Ok(unsafe { *block.as_ptr().offset(off) });
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u8::get"))
+    Err(BufError::IndexOutOfBounds)
 }
 
-pub fn set(v: u8, chain: &mut SetIter) -> io::Result<usize> {
+pub fn set(v: u8, chain: &mut SetIter) -> Result<usize, BufError> {
     if let Some(mut block) = chain.next() {
         let off = block.read_pos() as isize;
         unsafe { *block.as_mut_ptr().offset(off) = v };
         return Ok(U8_SIZE);
     }
-    Err(Error::new(ErrorKind::UnexpectedEof, "codec::u8::set"))
+    Err(BufError::IndexOutOfBounds)
 }
 
-pub fn append(v: u8, chain: &mut Appender) -> io::Result<usize> {
+pub fn append(v: u8, chain: &mut Appender) -> Result<usize, ()> {
     loop {
         if let Some(mut block) = chain.last_mut() {
             if block.appendable() > 0 {
@@ -44,7 +42,7 @@ pub fn append(v: u8, chain: &mut Appender) -> io::Result<usize> {
     }
 }
 
-pub fn prepend(v: u8, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend(v: u8, chain: &mut Prepender) -> Result<usize, ()> {
     loop {
         if let Some(mut block) = chain.first_mut() {
             if block.prependable() > 0 {

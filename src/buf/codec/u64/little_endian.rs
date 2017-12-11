@@ -1,12 +1,11 @@
 use std::mem;
-use std::io::{self, Error, ErrorKind};
 use std::ptr;
 
-use super::U64_SIZE;
-use super::super::reverse;
-use super::super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::codec::reverse;
+use buf::codec::u64::U64_SIZE;
 
-pub fn read(chain: &mut ReadIter) -> io::Result<u64> {
+pub fn read(chain: &mut ReadIter) -> Result<u64, BufError> {
     let mut v: u64 = unsafe { mem::uninitialized() };
     let mut ptr_dst: *mut u8 = unsafe { mem::transmute(&mut v) };
     let mut n = U64_SIZE;
@@ -30,13 +29,10 @@ pub fn read(chain: &mut ReadIter) -> io::Result<u64> {
         let pos = block.write_pos();
         block.set_read_pos(pos);
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::little_endian::read",
-    ))
+    Err(BufError::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> io::Result<u64> {
+pub fn get(chain: &mut GetIter) -> Result<u64, BufError> {
     let mut v: u64 = unsafe { mem::uninitialized() };
     let mut ptr_dst: *mut u8 = unsafe { mem::transmute(&mut v) };
     let mut n = U64_SIZE;
@@ -57,13 +53,10 @@ pub fn get(chain: &mut GetIter) -> io::Result<u64> {
             ptr_dst = ptr_dst.offset(len as isize);
         }
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::little_endian::get",
-    ))
+    Err(BufError::Underflow)
 }
 
-pub fn set(mut v: u64, chain: &mut SetIter) -> io::Result<usize> {
+pub fn set(mut v: u64, chain: &mut SetIter) -> Result<usize, BufError> {
     let mut ptr_src: *mut u8 = unsafe { mem::transmute(&mut v) };
     if cfg!(target_endian = "big") {
         reverse(ptr_src, U64_SIZE);
@@ -83,13 +76,10 @@ pub fn set(mut v: u64, chain: &mut SetIter) -> io::Result<usize> {
             ptr_src = ptr_src.offset(len as isize);
         }
     }
-    Err(Error::new(
-        ErrorKind::UnexpectedEof,
-        "codec::u64::little_endian::set",
-    ))
+    Err(BufError::IndexOutOfBounds)
 }
 
-pub fn append(mut v: u64, chain: &mut Appender) -> io::Result<usize> {
+pub fn append(mut v: u64, chain: &mut Appender) -> Result<usize, ()> {
     let mut ptr_src: *mut u8 = unsafe { mem::transmute(&mut v) };
     if cfg!(target_endian = "big") {
         reverse(ptr_src, U64_SIZE);
@@ -117,7 +107,7 @@ pub fn append(mut v: u64, chain: &mut Appender) -> io::Result<usize> {
     }
 }
 
-pub fn prepend(mut v: u64, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend(mut v: u64, chain: &mut Prepender) -> Result<usize, ()> {
     let mut ptr_src: *mut u8 = unsafe { mem::transmute(&mut v) };
     if cfg!(target_endian = "big") {
         reverse(ptr_src, U64_SIZE);

@@ -37,10 +37,12 @@ struct Conf {
     #[structopt(short = "t", long = "threads", help = "Number of threads", default_value = "0")]
     threads: usize,
 
-    #[structopt(short = "b", long = "bytes", help = "Number of bytes to send", default_value = "16384")]
+    #[structopt(short = "b", long = "bytes", help = "Number of bytes to send",
+                default_value = "16384")]
     bytes: usize,
 
-    #[structopt(short = "c", long = "connections", help = "Concurrent connections per thread", default_value = "25")]
+    #[structopt(short = "c", long = "connections", help = "Concurrent connections per thread",
+                default_value = "25")]
     conns: usize,
 
     #[structopt(short = "s", long = "seconds", help = "Seconds to run", default_value = "60")]
@@ -49,8 +51,7 @@ struct Conf {
     #[structopt(help = "Server IP to connect to", default_value = "127.0.0.1")]
     host: Option<IpAddr>,
 
-    #[structopt(help = "Server port to connect to", default_value = "10007")]
-    port: Option<u16>,
+    #[structopt(help = "Server port to connect to", default_value = "10007")] port: Option<u16>,
 }
 
 struct Vars {

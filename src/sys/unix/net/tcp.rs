@@ -10,7 +10,7 @@ use libc;
 
 use futures::{Async, Poll};
 
-use buf::{Block, ByteBuf, GetIter};
+use buf::{Block, BufError, ByteBuf, GetIter};
 use net::{TcpListener, TcpStream};
 use sys::nio::BorrowMut;
 use sys::unix::err::cvt;
@@ -199,9 +199,8 @@ where
     }
 }
 
-
 #[inline]
-fn get_iovs(chain: &mut GetIter) -> io::Result<Vec<IoVec>> {
+fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, BufError> {
     let mut iovecs = Vec::new();
     for block in chain {
         let off = block.read_pos() as isize;
@@ -271,7 +270,7 @@ where
 
     #[inline]
     fn writev(stream: &mut TcpStream, data: &mut ByteBuf) -> io::Result<()> {
-        let iovs = data.get(0, get_iovs)?;
+        let iovs = data.get(0, get_iovs).unwrap();
         let n = stream.writev(iovs.as_slice())?;
         data.skip(n);
         Ok(())

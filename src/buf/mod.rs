@@ -1,3 +1,6 @@
+mod err;
+pub use self::err::*;
+
 pub mod codec;
 
 mod block;
@@ -35,7 +38,6 @@ pub use self::writer::Writer;
 
 use std::cmp::Ordering;
 use std::mem;
-use std::io::{Error, ErrorKind, Result};
 use std::ptr;
 
 const EMPTY: &[u8] = &[];
@@ -99,60 +101,60 @@ impl ByteBuf {
     }
 
     #[inline]
-    pub fn read<T, R>(&mut self, read: R) -> Result<T>
+    pub fn read<T, E, R>(&mut self, read: R) -> Result<T, E>
     where
-        R: Fn(&mut ReadIter) -> Result<T>,
+        R: Fn(&mut ReadIter) -> Result<T, E>,
     {
         read(&mut self.read_iter())
     }
 
     #[inline]
-    pub fn read_exact<T, R>(&mut self, len: usize, read_exact: R) -> Result<T>
+    pub fn read_exact<T, E, R>(&mut self, len: usize, read_exact: R) -> Result<T, E>
     where
-        R: Fn(&mut ReadIter, usize) -> Result<T>,
+        R: Fn(&mut ReadIter, usize) -> Result<T, E>,
     {
         read_exact(&mut self.read_iter(), len)
     }
 
     #[inline]
-    pub fn get<T, G>(&self, mut index: usize, get: G) -> Result<T>
+    pub fn get<T, E, G>(&self, mut index: usize, get: G) -> Result<T, E>
     where
-        G: Fn(&mut GetIter) -> Result<T>,
+        G: Fn(&mut GetIter) -> Result<T, E>,
     {
-        let idx = self.locate_idx(&mut index)?;
+        let idx = self.locate_idx(&mut index).expect("Index out of bounds");
         get(&mut self.get_iter(idx, index))
     }
 
     #[inline]
-    pub fn get_exact<T, G>(&self, mut index: usize, len: usize, get_exact: G) -> Result<T>
+    pub fn get_exact<T, E, G>(&self, mut index: usize, len: usize, get_exact: G) -> Result<T, E>
     where
-        G: Fn(&mut GetIter, usize) -> Result<T>,
+        G: Fn(&mut GetIter, usize) -> Result<T, E>,
     {
-        let idx = self.locate_idx(&mut index)?;
+        let idx = self.locate_idx(&mut index).expect("Index out of bounds");
         get_exact(&mut self.get_iter(idx, index), len)
     }
 
     #[inline]
-    pub fn set<T, S>(&mut self, mut index: usize, t: T, set: S) -> Result<usize>
+    pub fn set<T, E, S>(&mut self, mut index: usize, t: T, set: S) -> Result<usize, E>
     where
-        S: Fn(T, &mut SetIter) -> Result<usize>,
+        S: Fn(T, &mut SetIter) -> Result<usize, E>,
     {
-        let idx = self.locate_idx(&mut index)?;
+        let idx = self.locate_idx(&mut index).expect("Index out of bounds");
         set(t, &mut self.set_iter(idx, index))
     }
 
     #[inline]
-    pub fn append<T, A>(&mut self, t: T, append: A) -> Result<usize>
+    pub fn append<T, E, A>(&mut self, t: T, append: A) -> Result<usize, E>
     where
-        A: Fn(T, &mut Appender) -> Result<usize>,
+        A: Fn(T, &mut Appender) -> Result<usize, E>,
     {
         append(t, &mut self.appender())
     }
 
     #[inline]
-    pub fn prepend<T, P>(&mut self, t: T, prepend: P) -> Result<usize>
+    pub fn prepend<T, E, P>(&mut self, t: T, prepend: P) -> Result<usize, E>
     where
-        P: Fn(T, &mut Prepender) -> Result<usize>,
+        P: Fn(T, &mut Prepender) -> Result<usize, E>,
     {
         prepend(t, &mut self.prepender())
     }
@@ -207,8 +209,9 @@ impl ByteBuf {
         }
     }
 
-    pub fn split_off(&mut self, mut at: usize) -> Result<Self> {
-        let idx = self.locate_idx(&mut at)?;
+    pub fn split_off(&mut self, mut at: usize) -> Result<Self, BufError> {
+        let idx = self.locate_idx(&mut at)
+            .map_err(|_| BufError::IndexOutOfBounds)?;
         let len = idx + 1;
         let n = self.blocks.len() - len;
         let mut other_blocks = Vec::new();
@@ -257,7 +260,7 @@ impl ByteBuf {
     }
 
     #[inline]
-    pub fn drain_to(&mut self, at: usize) -> Result<Self> {
+    pub fn drain_to(&mut self, at: usize) -> Result<Self, BufError> {
         let mut other = self.split_off(at)?;
         mem::swap(self, &mut other);
         Ok(other)
@@ -549,7 +552,8 @@ impl ByteBuf {
         prepend::prepender(self)
     }
 
-    fn locate_idx(&self, pos: &mut usize) -> Result<usize> {
+    fn locate_idx(&self, pos: &mut usize) -> Result<usize, usize> {
+        let off = *pos;
         let mut i = self.idx;
         for block in &self.blocks[self.idx..] {
             if *pos <= block.len() {
@@ -558,7 +562,7 @@ impl ByteBuf {
             i += 1;
             *pos -= block.len();
         }
-        Err(Error::new(ErrorKind::UnexpectedEof, "Index out of bounds"))
+        Err(off)
     }
 
     #[inline]

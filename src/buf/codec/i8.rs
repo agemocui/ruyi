@@ -1,38 +1,27 @@
-use std::io::{self, Error};
-
-use super::u8;
-use super::super::{Appender, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::codec::u8;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> io::Result<i8> {
-    match u8::read(chain) {
-        Ok(r) => Ok(r as i8),
-        Err(e) => Err(Error::new(e.kind(), "codec::i8::read")),
-    }
+pub fn read(chain: &mut ReadIter) -> Result<i8, BufError> {
+    u8::read(chain).map(|v| v as i8)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> io::Result<i8> {
-    match u8::get(chain) {
-        Ok(r) => Ok(r as i8),
-        Err(e) => Err(Error::new(e.kind(), "codec::i8::get")),
-    }
+pub fn get(chain: &mut GetIter) -> Result<i8, BufError> {
+    u8::get(chain).map(|v| v as i8)
 }
 
 #[inline]
-pub fn set(v: i8, chain: &mut SetIter) -> io::Result<usize> {
-    match u8::set(v as u8, chain) {
-        Ok(n) => Ok(n),
-        Err(e) => Err(Error::new(e.kind(), "codec::i8::set")),
-    }
+pub fn set(v: i8, chain: &mut SetIter) -> Result<usize, BufError> {
+    u8::set(v as u8, chain)
 }
 
 #[inline]
-pub fn append(v: i8, chain: &mut Appender) -> io::Result<usize> {
+pub fn append(v: i8, chain: &mut Appender) -> Result<usize, ()> {
     u8::append(v as u8, chain)
 }
 
 #[inline]
-pub fn prepend(v: i8, chain: &mut Prepender) -> io::Result<usize> {
+pub fn prepend(v: i8, chain: &mut Prepender) -> Result<usize, ()> {
     u8::prepend(v as u8, chain)
 }

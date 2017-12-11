@@ -8,7 +8,6 @@ use futures::{future, Async, Future, Poll};
 use ruyi::IntoTask;
 use ruyi::reactor::{self, Gate, Timer};
 
-
 static COUNT: AtomicUsize = ATOMIC_USIZE_INIT;
 
 struct GateHolder {

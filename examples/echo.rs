@@ -24,7 +24,8 @@ use ruyi::{reactor, IntoTask, Task};
 #[derive(StructOpt, Debug)]
 #[structopt(name = "echo", about = "A program that implements Echo Protocol.")]
 struct Opt {
-    #[structopt(short = "p", long = "port", help = "Listening port to bind", default_value = "10007")]
+    #[structopt(short = "p", long = "port", help = "Listening port to bind",
+                default_value = "10007")]
     port: u16,
     #[structopt(short = "w", long = "workers", help = "Number of workers", default_value = "0")]
     workers: usize,

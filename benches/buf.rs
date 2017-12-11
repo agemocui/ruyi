@@ -10,7 +10,6 @@ use test::Bencher;
 
 const SIZE: usize = 16 * 1024;
 
-
 #[bench]
 fn bench_find(b: &mut Bencher) {
     let mut buf = ByteBuf::with_capacity(SIZE);
