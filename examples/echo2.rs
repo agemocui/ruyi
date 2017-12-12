@@ -18,7 +18,8 @@ use structopt::StructOpt;
 
 use ruyi::{IntoTask, Task};
 use ruyi::net::tcp::split;
-use ruyi::service::tcp::{self, Handler, Session};
+use ruyi::service::tcp;
+use ruyi::service::tcp::server::{Handler, Session};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "echo2", about = "A program that implements Echo Protocol.")]

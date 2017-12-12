@@ -1,7 +1,7 @@
 use std::borrow::ToOwned;
 
 use task::Task;
-use service::tcp::Session;
+use service::tcp::server::Session;
 
 pub trait Handler {
     fn handle(&mut self, session: Session) -> Option<Task>;

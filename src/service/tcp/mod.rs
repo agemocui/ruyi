@@ -1,2 +1,2 @@
-mod server;
-pub use self::server::*;
+pub mod server;
+pub use self::server::Server;

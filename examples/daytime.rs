@@ -21,7 +21,8 @@ use structopt::StructOpt;
 use ruyi::{IntoTask, Task};
 use ruyi::buf::ByteBuf;
 use ruyi::net::tcp::send;
-use ruyi::service::tcp::{self, Handler, Session};
+use ruyi::service::tcp;
+use ruyi::service::tcp::server::{Handler, Session};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "daytime", about = "A program that implements Daytime Protocol.")]
