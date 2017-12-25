@@ -1,12 +1,12 @@
 use std::mem;
 use std::ptr;
 
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 use buf::codec::reverse;
 use buf::codec::f64::F64_SIZE;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<f64, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<f64, Error> {
     let mut v: f64 = unsafe { mem::uninitialized() };
     let mut ptr_dst: *mut u8 = unsafe { mem::transmute(&mut v) };
     let mut n = F64_SIZE;
@@ -30,10 +30,10 @@ pub fn read(chain: &mut ReadIter) -> Result<f64, BufError> {
         let pos = block.write_pos();
         block.set_read_pos(pos);
     }
-    Err(BufError::Underflow)
+    Err(Error::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> Result<f64, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<f64, Error> {
     let mut v: f64 = unsafe { mem::uninitialized() };
     let mut ptr_dst: *mut u8 = unsafe { mem::transmute(&mut v) };
     let mut n = F64_SIZE;
@@ -54,10 +54,10 @@ pub fn get(chain: &mut GetIter) -> Result<f64, BufError> {
             ptr_dst = ptr_dst.offset(len as isize);
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
-pub fn set(mut v: f64, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(mut v: f64, chain: &mut SetIter) -> Result<usize, Error> {
     let mut ptr_src: *mut u8 = unsafe { mem::transmute(&mut v) };
     if cfg!(target_endian = "little") {
         reverse(ptr_src, F64_SIZE);
@@ -77,7 +77,7 @@ pub fn set(mut v: f64, chain: &mut SetIter) -> Result<usize, BufError> {
             ptr_src = ptr_src.offset(len as isize);
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
 pub fn append(mut v: f64, chain: &mut Appender) -> Result<usize, ()> {

@@ -12,7 +12,7 @@ use ws2_32;
 use net2::TcpBuilder;
 use futures::{Async, Poll};
 
-use buf::{Block, BufError, ByteBuf, GetIter};
+use buf::{Block, ByteBuf, Error, GetIter};
 use net::{TcpListener, TcpStream};
 use sys::nio::BorrowMut;
 use sys::windows::net::{get_overlapped_result, last_error, ACCEPTEX, CONNECTEX,
@@ -211,13 +211,11 @@ impl Incoming {
     #[inline]
     fn new_sock(&self) -> io::Result<TcpStream> {
         const IPPROTO_TCP: winapi::c_int = 6;
-        let accept_sock =
-            unsafe { ws2_32::socket(self.family, winapi::SOCK_STREAM, IPPROTO_TCP) };
+        let accept_sock = unsafe { ws2_32::socket(self.family, winapi::SOCK_STREAM, IPPROTO_TCP) };
         if accept_sock == winapi::INVALID_SOCKET {
             return Err(last_error());
         }
-        let stream =
-            unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock)) };
+        let stream = unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock)) };
         Ok(stream)
     }
 }
@@ -426,7 +424,7 @@ where
 }
 
 #[inline]
-fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, BufError> {
+fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, Error> {
     let mut iovecs = Vec::new();
     for block in chain {
         let off = block.read_pos() as isize;
@@ -545,7 +543,7 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
         let nio_r = Rc::new(UnsafeCell::new(self.0.nio));
         let nio_s = nio_r.clone();
         (
@@ -587,7 +585,7 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
         let nio_s = Rc::new(UnsafeCell::new(self.0.nio));
         let nio_r = nio_s.clone();
         (

@@ -1,18 +1,18 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 use buf::codec::u32;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<i32, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<i32, Error> {
     u32::big_endian::read(chain).map(|v| v as i32)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> Result<i32, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<i32, Error> {
     u32::big_endian::get(chain).map(|v| v as i32)
 }
 
 #[inline]
-pub fn set(v: i32, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: i32, chain: &mut SetIter) -> Result<usize, Error> {
     u32::big_endian::set(v as u32, chain)
 }
 

@@ -1,18 +1,18 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 use buf::codec::u16;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<i16, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<i16, Error> {
     u16::big_endian::read(chain).map(|v| v as i16)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> Result<i16, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<i16, Error> {
     u16::big_endian::get(chain).map(|v| v as i16)
 }
 
 #[inline]
-pub fn set(v: i16, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: i16, chain: &mut SetIter) -> Result<usize, Error> {
     u16::big_endian::set(v as u16, chain)
 }
 

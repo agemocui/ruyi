@@ -1,18 +1,18 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 use buf::codec::u64;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<i64, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<i64, Error> {
     u64::big_endian::read(chain).map(|v| v as i64)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> Result<i64, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<i64, Error> {
     u64::big_endian::get(chain).map(|v| v as i64)
 }
 
 #[inline]
-pub fn set(v: i64, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: i64, chain: &mut SetIter) -> Result<usize, Error> {
     u64::big_endian::set(v as u64, chain)
 }
 

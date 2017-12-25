@@ -1,18 +1,18 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 use buf::codec::u8;
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<i8, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<i8, Error> {
     u8::read(chain).map(|v| v as i8)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> Result<i8, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<i8, Error> {
     u8::get(chain).map(|v| v as i8)
 }
 
 #[inline]
-pub fn set(v: i8, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: i8, chain: &mut SetIter) -> Result<usize, Error> {
     u8::set(v as u8, chain)
 }
 

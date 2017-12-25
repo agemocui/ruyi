@@ -209,9 +209,9 @@ impl ByteBuf {
         }
     }
 
-    pub fn split_off(&mut self, mut at: usize) -> Result<Self, BufError> {
+    pub fn split_off(&mut self, mut at: usize) -> Result<Self, Error> {
         let idx = self.locate_idx(&mut at)
-            .map_err(|_| BufError::IndexOutOfBounds)?;
+            .map_err(|_| Error::IndexOutOfBounds)?;
         let len = idx + 1;
         let n = self.blocks.len() - len;
         let mut other_blocks = Vec::new();
@@ -260,7 +260,7 @@ impl ByteBuf {
     }
 
     #[inline]
-    pub fn drain_to(&mut self, at: usize) -> Result<Self, BufError> {
+    pub fn drain_to(&mut self, at: usize) -> Result<Self, Error> {
         let mut other = self.split_off(at)?;
         mem::swap(self, &mut other);
         Ok(other)

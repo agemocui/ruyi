@@ -44,16 +44,12 @@ impl<'a> fmt::Display for HexDump<'a> {
                         for _ in i..BYTES_PER_ROW {
                             write!(f, "   ")?;
                         }
-                        writeln!(f, "   {}", unsafe {
-                            str::from_utf8_unchecked(&asc[0..i])
-                        })?;
+                        writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
                         return Ok(());
                     }
                 }
             }
-            writeln!(f, "   {}", unsafe {
-                str::from_utf8_unchecked(&asc[0..i])
-            })?;
+            writeln!(f, "   {}", unsafe { str::from_utf8_unchecked(&asc[0..i]) })?;
             addr += BYTES_PER_ROW;
         }
     }

@@ -67,7 +67,8 @@ impl<'a> Window<'a> {
     fn to_bytes_right(blocks: &'a [Block], mut off: usize, mut size: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(size);
         unsafe { bytes.set_len(size) }
-        let mut p_dst = unsafe { bytes.as_mut_ptr().offset(size as isize) };
+        let mut p_dst: *mut u8 = bytes.as_mut_ptr();
+        p_dst = unsafe { p_dst.offset(size as isize) };
         for block in blocks.iter().rev() {
             off = block.write_pos() - off;
             let len = off - block.read_pos();

@@ -1,6 +1,6 @@
 use std::ptr;
 
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 
 #[derive(Copy, Clone)]
 pub struct Filling {
@@ -31,12 +31,12 @@ impl Filling {
 }
 
 #[inline]
-pub fn read(chain: &mut ReadIter) -> Result<Vec<u8>, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<Vec<u8>, Error> {
     let len = chain.len();
     read_exact(chain, len)
 }
 
-pub fn read_exact(chain: &mut ReadIter, mut n: usize) -> Result<Vec<u8>, BufError> {
+pub fn read_exact(chain: &mut ReadIter, mut n: usize) -> Result<Vec<u8>, Error> {
     if n == 0 {
         return Ok(Vec::new());
     }
@@ -60,16 +60,16 @@ pub fn read_exact(chain: &mut ReadIter, mut n: usize) -> Result<Vec<u8>, BufErro
         let pos = block.write_pos();
         block.set_read_pos(pos);
     }
-    Err(BufError::Underflow)
+    Err(Error::Underflow)
 }
 
 #[inline]
-pub fn get(chain: &mut GetIter) -> Result<Vec<u8>, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<Vec<u8>, Error> {
     let len = chain.len();
     get_exact(chain, len)
 }
 
-pub fn get_exact(chain: &mut GetIter, mut n: usize) -> Result<Vec<u8>, BufError> {
+pub fn get_exact(chain: &mut GetIter, mut n: usize) -> Result<Vec<u8>, Error> {
     if n == 0 {
         return Ok(Vec::new());
     }
@@ -90,10 +90,10 @@ pub fn get_exact(chain: &mut GetIter, mut n: usize) -> Result<Vec<u8>, BufError>
             ptr_dst = ptr_dst.offset(len as isize);
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
-pub fn set(v: &[u8], chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: &[u8], chain: &mut SetIter) -> Result<usize, Error> {
     let mut ptr_src = v.as_ptr();
     let mut n = v.len();
     for mut block in chain {
@@ -110,7 +110,7 @@ pub fn set(v: &[u8], chain: &mut SetIter) -> Result<usize, BufError> {
             ptr_src = ptr_src.offset(len as isize);
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
 pub fn append(v: &[u8], chain: &mut Appender) -> Result<usize, ()> {
@@ -187,7 +187,7 @@ pub fn prepend_bytes(v: Vec<u8>, chain: &mut Prepender) -> Result<usize, ()> {
     }
 }
 
-pub fn set_fill(filling: Filling, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set_fill(filling: Filling, chain: &mut SetIter) -> Result<usize, Error> {
     let mut n = filling.count();
     for mut block in chain {
         let off = block.read_pos() as isize;
@@ -200,7 +200,7 @@ pub fn set_fill(filling: Filling, chain: &mut SetIter) -> Result<usize, BufError
         n -= len;
         unsafe { ptr::write_bytes(ptr_dst, filling.val(), len) };
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
 pub fn append_fill(filling: Filling, chain: &mut Appender) -> Result<usize, ()> {

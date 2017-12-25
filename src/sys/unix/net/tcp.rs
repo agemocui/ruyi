@@ -10,7 +10,7 @@ use libc;
 
 use futures::{Async, Poll};
 
-use buf::{Block, BufError, ByteBuf, GetIter};
+use buf::{Block, ByteBuf, Error, GetIter};
 use net::{TcpListener, TcpStream};
 use sys::nio::BorrowMut;
 use sys::unix::err::cvt;
@@ -200,7 +200,7 @@ where
 }
 
 #[inline]
-fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, BufError> {
+fn get_iovs(chain: &mut GetIter) -> Result<Vec<IoVec>, Error> {
     let mut iovecs = Vec::new();
     for block in chain {
         let off = block.read_pos() as isize;
@@ -311,7 +311,7 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
         let nio_r = Rc::new(UnsafeCell::new(self.inner.nio));
         let nio_s = nio_r.clone();
         (
@@ -322,6 +322,13 @@ where
                 inner: OStream::from(nio_s),
             },
         )
+    }
+
+    #[inline]
+    pub fn into_sender(self) -> Sender<T> {
+        Sender {
+            inner: OStream::from(self.inner.nio),
+        }
     }
 }
 
@@ -359,7 +366,7 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
         let nio_s = Rc::new(UnsafeCell::new(self.inner.nio));
         let nio_r = nio_s.clone();
         (
@@ -370,6 +377,13 @@ where
                 inner: OStream::from(nio_s),
             },
         )
+    }
+
+    #[inline]
+    pub fn into_recv(self) -> Recv<T> {
+        Recv {
+            inner: IStream::from(self.inner.nio),
+        }
     }
 }
 

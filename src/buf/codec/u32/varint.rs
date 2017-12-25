@@ -1,6 +1,6 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 
-pub fn read(chain: &mut ReadIter) -> Result<u32, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<u32, Error> {
     let mut v = 0u32;
     let mut shift = 0;
     for mut block in chain {
@@ -17,10 +17,10 @@ pub fn read(chain: &mut ReadIter) -> Result<u32, BufError> {
         }
         block.set_read_pos(write_pos);
     }
-    Err(BufError::Underflow)
+    Err(Error::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> Result<u32, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<u32, Error> {
     let mut v = 0u32;
     let mut shift = 0;
     for block in chain {
@@ -34,10 +34,10 @@ pub fn get(chain: &mut GetIter) -> Result<u32, BufError> {
             shift = shift.wrapping_add(7);
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
-pub fn set(mut v: u32, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(mut v: u32, chain: &mut SetIter) -> Result<usize, Error> {
     let mut n = 0usize;
     for mut block in chain {
         let ptr_u8 = block.as_mut_ptr();
@@ -52,7 +52,7 @@ pub fn set(mut v: u32, chain: &mut SetIter) -> Result<usize, BufError> {
             v >>= 7;
         }
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
 pub fn append(mut v: u32, chain: &mut Appender) -> Result<usize, ()> {

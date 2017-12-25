@@ -1,31 +1,31 @@
-use buf::{Appender, BufError, GetIter, Prepender, ReadIter, SetIter};
+use buf::{Appender, Error, GetIter, Prepender, ReadIter, SetIter};
 
 const U8_SIZE: usize = 1;
 
-pub fn read(chain: &mut ReadIter) -> Result<u8, BufError> {
+pub fn read(chain: &mut ReadIter) -> Result<u8, Error> {
     if let Some(mut block) = chain.next() {
         let off = block.read_pos();
         block.set_read_pos(off + U8_SIZE);
         return Ok(unsafe { *block.as_ptr().offset(off as isize) });
     }
-    Err(BufError::Underflow)
+    Err(Error::Underflow)
 }
 
-pub fn get(chain: &mut GetIter) -> Result<u8, BufError> {
+pub fn get(chain: &mut GetIter) -> Result<u8, Error> {
     if let Some(block) = chain.next() {
         let off = block.read_pos() as isize;
         return Ok(unsafe { *block.as_ptr().offset(off) });
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
-pub fn set(v: u8, chain: &mut SetIter) -> Result<usize, BufError> {
+pub fn set(v: u8, chain: &mut SetIter) -> Result<usize, Error> {
     if let Some(mut block) = chain.next() {
         let off = block.read_pos() as isize;
         unsafe { *block.as_mut_ptr().offset(off) = v };
         return Ok(U8_SIZE);
     }
-    Err(BufError::IndexOutOfBounds)
+    Err(Error::IndexOutOfBounds)
 }
 
 pub fn append(v: u8, chain: &mut Appender) -> Result<usize, ()> {
