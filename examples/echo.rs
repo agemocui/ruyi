@@ -16,7 +16,7 @@ use std::thread;
 use futures::{Future, Sink, Stream};
 use structopt::StructOpt;
 
-use ruyi::channel::spsc;
+use ruyi::sync::spsc;
 use ruyi::net::{TcpListener, TcpStream};
 use ruyi::net::tcp::split;
 use ruyi::{reactor, IntoTask, Task};

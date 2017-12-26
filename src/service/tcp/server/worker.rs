@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 
-use channel::err::SendError;
-use channel::spsc::SyncSender;
+use sync::err::SendError;
+use sync::spsc::SyncSender;
 use net::TcpStream;
 
 pub struct Worker {

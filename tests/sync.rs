@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use futures::Stream;
 
-use ruyi::channel::spsc;
+use ruyi::sync::spsc;
 use ruyi::reactor;
 
 #[test]

@@ -58,8 +58,8 @@ pub use self::task::*;
 
 mod sys;
 
+pub mod sync;
 pub mod buf;
-pub mod channel;
 pub mod reactor;
 pub mod net;
 

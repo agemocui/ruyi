@@ -8,8 +8,8 @@ use std::thread::{self, JoinHandle};
 
 use futures::{Future, Stream};
 
-use channel::err::SendError;
-use channel::spsc::{self, Receiver, SyncSender};
+use sync::err::SendError;
+use sync::spsc::{self, Receiver, SyncSender};
 use net::{TcpListener, TcpListenerBuilder, TcpStream};
 use reactor;
 use task::{IntoTask, Task};

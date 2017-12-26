@@ -25,7 +25,7 @@ use futures::{stream, Future, Sink, Stream};
 use structopt::StructOpt;
 
 use ruyi::buf::ByteBuf;
-use ruyi::channel::spsc;
+use ruyi::sync::spsc;
 use ruyi::net::TcpStream;
 use ruyi::net::tcp::connect;
 use ruyi::reactor::{self, Timer};

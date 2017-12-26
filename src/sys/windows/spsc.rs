@@ -2,7 +2,7 @@ use std::io;
 use std::sync::Arc;
 
 use futures::{Async, Poll};
-use channel::spsc::{ReceiverAwakener, RingBuffer};
+use sync::spsc::{ReceiverAwakener, RingBuffer};
 
 pub(crate) struct Recv<T> {
     awakener: ReceiverAwakener,

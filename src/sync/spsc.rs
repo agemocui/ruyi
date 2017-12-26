@@ -10,7 +10,7 @@ use futures::stream::Stream;
 use futures::Poll;
 
 use sys::{self, Awakener};
-use channel::err::{SendError, TrySendError};
+use sync::err::{SendError, TrySendError};
 
 #[cfg_attr(nightly, repr(align(64)))]
 #[derive(Debug)]

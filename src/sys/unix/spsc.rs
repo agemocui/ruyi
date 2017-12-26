@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use futures::{Async, Poll};
-use channel::spsc::{ReceiverAwakener, RingBuffer};
+use sync::spsc::{ReceiverAwakener, RingBuffer};
 use sys::unix::awakener::Awakener;
 use sys::unix::nio::Nio;
 
