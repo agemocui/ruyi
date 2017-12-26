@@ -36,6 +36,7 @@ pub use self::reader::Reader;
 mod writer;
 pub use self::writer::Writer;
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::mem;
 use std::ptr;
@@ -266,7 +267,26 @@ impl ByteBuf {
         Ok(other)
     }
 
-    pub fn as_bytes(&self) -> Option<&[u8]> {
+    pub fn as_bytes(&self) -> Cow<[u8]> {
+        let mut idx = self.idx;
+        let mut n = None;
+        while idx < self.blocks.len() {
+            if !unsafe { self.blocks.get_unchecked(idx) }.is_empty() {
+                if let Some(i) = n {
+                    return Cow::Owned(codec::u8s::get(&mut self.get_iter(i, 0)).unwrap());
+                }
+                n = Some(idx);
+            }
+            idx += 1;
+        }
+
+        Cow::Borrowed(match n {
+            Some(i) => unsafe { self.blocks.get_unchecked(i) }.as_bytes(),
+            None => EMPTY,
+        })
+    }
+
+    pub fn try_as_bytes(&self) -> Option<&[u8]> {
         let mut idx = self.idx;
         let mut n = None;
         while idx < self.blocks.len() {
