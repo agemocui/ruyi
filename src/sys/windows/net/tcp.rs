@@ -556,6 +556,11 @@ where
             SendHalf(OStream::from(nio_s)),
         )
     }
+
+    #[inline]
+    pub fn into_sender(self) -> Sender<T> {
+        Sender(OStream::from(self.0.nio))
+    }
 }
 
 pub struct Sender<T>(OStream<T>);
@@ -597,6 +602,11 @@ where
                 _marker: PhantomData,
             }),
         )
+    }
+
+    #[inline]
+    pub fn into_recv(self) -> Recv<T> {
+        Recv(IStream::from(self.0.nio))
     }
 }
 
