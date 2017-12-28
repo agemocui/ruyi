@@ -355,8 +355,8 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
-        let (r, s) = self.inner.into_2way();
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
+        let (r, s) = self.inner.into_twoway();
         (
             RecvHalf { inner: r },
             SendHalf {
@@ -364,6 +364,14 @@ where
                 buf: ByteBuf::new(),
             },
         )
+    }
+
+    #[inline]
+    pub fn into_sender(self) -> Sender<T> {
+        Sender {
+            inner: self.inner.into_sender(),
+            buf: ByteBuf::new(),
+        }
     }
 }
 
@@ -408,8 +416,8 @@ where
     }
 
     #[inline]
-    pub fn into_2way(self) -> (RecvHalf<T>, SendHalf<T>) {
-        let (r, s) = self.inner.into_2way();
+    pub fn into_twoway(self) -> (RecvHalf<T>, SendHalf<T>) {
+        let (r, s) = self.inner.into_twoway();
         (
             RecvHalf { inner: r },
             SendHalf {
@@ -417,6 +425,13 @@ where
                 buf: self.buf,
             },
         )
+    }
+
+    #[inline]
+    pub fn into_recv(self) -> Recv<T> {
+        Recv {
+            inner: self.inner.into_recv(),
+        }
     }
 }
 

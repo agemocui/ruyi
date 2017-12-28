@@ -76,7 +76,7 @@ fn ping_pong(
             Ok(s)
         })
         .and_then(move |s| {
-            let (r, w) = s.into_2way();
+            let (r, w) = s.into_twoway();
             let mut data = Vec::<u8>::with_capacity(len);
             unsafe { data.set_len(len) };
             w.send_all(
