@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ptr;
 
 use super::{Block, ByteBuf};
@@ -14,7 +15,24 @@ pub struct Window<'a> {
 }
 
 impl<'a> Window<'a> {
-    pub fn as_bytes(&self) -> Option<&[u8]> {
+    pub fn as_bytes(&self) -> Cow<[u8]> {
+        if self.size == 0 {
+            return Cow::Borrowed(&[]);
+        }
+        match self.blocks.len() == 1 {
+            true => {
+                let b = unsafe { self.blocks.get_unchecked(0) };
+                let bytes = match self.off {
+                    Off::Left(off) => b.as_bytes_range(b.read_pos() + off, self.size),
+                    Off::Right(off) => b.as_bytes_range(b.write_pos() - off - self.size, self.size),
+                };
+                Cow::Borrowed(bytes)
+            }
+            false => Cow::Owned(self.to_bytes()),
+        }
+    }
+
+    pub fn try_as_bytes(&self) -> Option<&[u8]> {
         if self.size == 0 {
             return Some(&[]);
         }
