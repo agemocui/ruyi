@@ -8,11 +8,7 @@ extern crate log;
 extern crate libc;
 
 #[cfg(windows)]
-extern crate kernel32;
-#[cfg(windows)]
 extern crate winapi;
-#[cfg(windows)]
-extern crate ws2_32;
 
 #[allow(unused_imports)]
 #[macro_use]

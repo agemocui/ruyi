@@ -7,8 +7,15 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, RawSocket};
 use std::ptr;
 use std::rc::Rc;
 
-use winapi;
-use ws2_32;
+use winapi::ctypes::c_int;
+use winapi::shared::minwindef::{BOOL, DWORD, LPDWORD, LPINT, TRUE};
+use winapi::shared::ws2def::{AF_INET6, AF_INET, LPSOCKADDR, LPWSABUF, SOCKADDR, SOCKADDR_IN,
+                             SOCKADDR_STORAGE};
+use winapi::shared::ws2ipdef::SOCKADDR_IN6_LH;
+use winapi::um::winnt::PVOID;
+use winapi::um::minwinbase::LPOVERLAPPED;
+use winapi::um::winsock2::{setsockopt, socket, WSARecv, WSASend, INVALID_SOCKET, SOCKET,
+                           SOCKET_ERROR, SOCK_STREAM, SOL_SOCKET};
 use net2::TcpBuilder;
 use futures::{Async, Poll};
 
@@ -23,30 +30,30 @@ use sys::windows::nio::{IoVec, Nio, Overlapped, Readv, Writev};
 // TcpListener
 
 type AcceptEx = unsafe extern "system" fn(
-    winapi::SOCKET,       // _In_  sListenSocket
-    winapi::SOCKET,       // _In_  sAcceptSocket
-    winapi::PVOID,        // _In_  lpOutputBuffer
-    winapi::DWORD,        // _In_  dwReceiveDataLength
-    winapi::DWORD,        // _In_  dwLocalAddressLength
-    winapi::DWORD,        // _In_  dwRemoteAddressLength
-    winapi::LPDWORD,      // _Out_ lpdwBytesReceived
-    winapi::LPOVERLAPPED, // _In_  lpOverlapped
-) -> winapi::BOOL;
+    SOCKET,       // _In_  sListenSocket
+    SOCKET,       // _In_  sAcceptSocket
+    PVOID,        // _In_  lpOutputBuffer
+    DWORD,        // _In_  dwReceiveDataLength
+    DWORD,        // _In_  dwLocalAddressLength
+    DWORD,        // _In_  dwRemoteAddressLength
+    LPDWORD,      // _Out_ lpdwBytesReceived
+    LPOVERLAPPED, // _In_  lpOverlapped
+) -> BOOL;
 
 type GetAcceptExSockaddrs = unsafe extern "system" fn(
-    winapi::PVOID,           // _In_ lpOutputBuffer
-    winapi::DWORD,           // _In_ dwReceiveDataLength
-    winapi::DWORD,           // _In_ dwLocalAddressLength
-    winapi::DWORD,           // _In_ dwRemoteAddressLength
-    *mut winapi::LPSOCKADDR, // _Out_ *LocalSockaddr
-    winapi::LPINT,           // _Out_ LocalSockaddrLength
-    *mut winapi::LPSOCKADDR, // _Out_ *RemoteSockaddr
-    winapi::LPINT,           // _Out_ RemoteSockaddrLength
+    PVOID,           // _In_ lpOutputBuffer
+    DWORD,           // _In_ dwReceiveDataLength
+    DWORD,           // _In_ dwLocalAddressLength
+    DWORD,           // _In_ dwRemoteAddressLength
+    *mut LPSOCKADDR, // _Out_ *LocalSockaddr
+    LPINT,           // _Out_ LocalSockaddrLength
+    *mut LPSOCKADDR, // _Out_ *RemoteSockaddr
+    LPINT,           // _Out_ RemoteSockaddrLength
 );
 
 struct AcceptOutBuf {
-    _local_addr: winapi::SOCKADDR_STORAGE,
-    _remote_addr: winapi::SOCKADDR_STORAGE,
+    _local_addr: SOCKADDR_STORAGE,
+    _remote_addr: SOCKADDR_STORAGE,
 }
 
 struct Var {
@@ -62,17 +69,17 @@ impl Var {
         let mut bytes = 0;
         let success = unsafe {
             (self.accept_ex)(
-                listener.as_raw_socket(),
-                stream.as_raw_socket(),
+                listener.as_raw_socket() as SOCKET,
+                stream.as_raw_socket() as SOCKET,
                 &mut self.accept_out_buf as *mut _ as *mut _,
                 0,
-                mem::size_of::<winapi::SOCKADDR_STORAGE>() as winapi::DWORD,
-                mem::size_of::<winapi::SOCKADDR_STORAGE>() as winapi::DWORD,
+                mem::size_of::<SOCKADDR_STORAGE>() as DWORD,
+                mem::size_of::<SOCKADDR_STORAGE>() as DWORD,
                 &mut bytes,
                 self.overlapped.as_mut(),
             )
         };
-        match success == winapi::TRUE {
+        match success == TRUE {
             true => self.finish_accept(listener, stream),
             false => Err(last_error()),
         }
@@ -84,15 +91,15 @@ impl Var {
         listener: &TcpListener,
         stream: &TcpStream,
     ) -> io::Result<SocketAddr> {
-        const SO_UPDATE_ACCEPT_CONTEXT: winapi::c_int = 0x700B;
+        const SO_UPDATE_ACCEPT_CONTEXT: c_int = 0x700B;
         let listen_sock = listener.as_raw_socket();
         let result = unsafe {
-            ws2_32::setsockopt(
-                stream.as_raw_socket(),
-                winapi::SOL_SOCKET,
+            setsockopt(
+                stream.as_raw_socket() as SOCKET,
+                SOL_SOCKET,
                 SO_UPDATE_ACCEPT_CONTEXT,
                 &listen_sock as *const _ as *const _,
-                mem::size_of_val(&listen_sock) as winapi::c_int,
+                mem::size_of_val(&listen_sock) as c_int,
             )
         };
         if result != 0 {
@@ -112,25 +119,25 @@ impl Var {
             (self.get_acceptex_sockaddrs)(
                 &self.accept_out_buf as *const _ as *mut _,
                 0,
-                mem::size_of::<winapi::SOCKADDR_STORAGE>() as winapi::DWORD,
-                mem::size_of::<winapi::SOCKADDR_STORAGE>() as winapi::DWORD,
+                mem::size_of::<SOCKADDR_STORAGE>() as DWORD,
+                mem::size_of::<SOCKADDR_STORAGE>() as DWORD,
                 &mut local_addr,
                 &mut local_addr_len,
                 &mut remote_addr,
                 &mut remote_addr_len,
             )
         }
-        let storage: &winapi::SOCKADDR_STORAGE = unsafe { mem::transmute(remote_addr) };
+        let storage: &SOCKADDR_STORAGE = unsafe { mem::transmute(remote_addr) };
         let len = remote_addr_len as usize;
-        match storage.ss_family as winapi::c_int {
-            winapi::AF_INET => {
-                debug_assert!(len >= mem::size_of::<winapi::SOCKADDR_IN>());
-                let addr = unsafe { *(storage as *const _ as *const winapi::SOCKADDR_IN) };
+        match storage.ss_family as c_int {
+            AF_INET => {
+                debug_assert!(len >= mem::size_of::<SOCKADDR_IN>());
+                let addr = unsafe { *(storage as *const _ as *const SOCKADDR_IN) };
                 Ok(SocketAddr::V4(unsafe { mem::transmute(addr) }))
             }
-            winapi::AF_INET6 => {
-                debug_assert!(len >= mem::size_of::<winapi::sockaddr_in6>());
-                let addr = unsafe { *(storage as *const _ as *const winapi::sockaddr_in6) };
+            AF_INET6 => {
+                debug_assert!(len >= mem::size_of::<SOCKADDR_IN6_LH>());
+                let addr = unsafe { *(storage as *const _ as *const SOCKADDR_IN6_LH) };
                 Ok(SocketAddr::V6(unsafe { mem::transmute(addr) }))
             }
             _ => Err(io::Error::new(
@@ -151,18 +158,19 @@ impl AsRawSocket for TcpListener {
 pub struct Incoming {
     nio: Nio<TcpListener>,
     var: Box<Var>,
-    family: winapi::c_int,
+    family: c_int,
     stream: Option<TcpStream>,
 }
 
 impl Incoming {
     #[inline]
     pub fn try_from(listener: TcpListener) -> io::Result<Self> {
-        let accept_ex = ACCEPTEX.get(listener.as_raw_socket())?;
-        let get_acceptex_sockaddrs = GET_ACCEPTEX_SOCKADDRS.get(listener.as_raw_socket())?;
+        let accept_ex = ACCEPTEX.get(listener.as_raw_socket() as SOCKET)?;
+        let get_acceptex_sockaddrs =
+            GET_ACCEPTEX_SOCKADDRS.get(listener.as_raw_socket() as SOCKET)?;
         let family = match listener.as_inner().local_addr()?.is_ipv6() {
-            true => winapi::AF_INET6,
-            false => winapi::AF_INET,
+            true => AF_INET6,
+            false => AF_INET,
         };
         Ok(Incoming {
             nio: Nio::try_from(listener)?,
@@ -182,7 +190,7 @@ impl Incoming {
         if self.nio.is_read_ready() {
             if let Some(stream) = self.stream.take() {
                 match get_overlapped_result(
-                    self.nio.get_ref().as_raw_socket(),
+                    self.nio.get_ref().as_raw_socket() as SOCKET,
                     &mut self.var.overlapped,
                 ).and_then(|_| self.var.finish_accept(self.nio.get_ref(), &stream))
                 {
@@ -210,12 +218,13 @@ impl Incoming {
 
     #[inline]
     fn new_sock(&self) -> io::Result<TcpStream> {
-        const IPPROTO_TCP: winapi::c_int = 6;
-        let accept_sock = unsafe { ws2_32::socket(self.family, winapi::SOCK_STREAM, IPPROTO_TCP) };
-        if accept_sock == winapi::INVALID_SOCKET {
+        const IPPROTO_TCP: c_int = 6;
+        let accept_sock = unsafe { socket(self.family, SOCK_STREAM, IPPROTO_TCP) };
+        if accept_sock == INVALID_SOCKET {
             return Err(last_error());
         }
-        let stream = unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock)) };
+        let stream =
+            unsafe { TcpStream::from(net::TcpStream::from_raw_socket(accept_sock as RawSocket)) };
         Ok(stream)
     }
 }
@@ -232,20 +241,20 @@ impl AsRawSocket for TcpStream {
 
 impl Readv for TcpStream {
     unsafe fn readv(&mut self, iovs: &[IoVec], overlapped: &mut Overlapped) -> io::Result<usize> {
-        let iov_ptr = iovs.as_ptr() as *mut IoVec as winapi::LPWSABUF;
+        let iov_ptr = iovs.as_ptr() as *mut IoVec as LPWSABUF;
         let mut bytes = 0;
         let mut flags = 0;
-        let ret = ws2_32::WSARecv(
-            self.as_raw_socket(),
+        let ret = WSARecv(
+            self.as_raw_socket() as SOCKET,
             iov_ptr,
-            iovs.len() as winapi::DWORD,
+            iovs.len() as DWORD,
             &mut bytes,
             &mut flags,
             overlapped.as_mut(),
             None,
         );
         match ret {
-            winapi::SOCKET_ERROR => Err(last_error()),
+            SOCKET_ERROR => Err(last_error()),
             _ => Ok(bytes as usize),
         }
     }
@@ -253,19 +262,19 @@ impl Readv for TcpStream {
 
 impl Writev for TcpStream {
     unsafe fn writev(&mut self, iovs: &[IoVec], overlapped: &mut Overlapped) -> io::Result<usize> {
-        let iov_ptr = iovs.as_ptr() as *mut IoVec as winapi::LPWSABUF;
+        let iov_ptr = iovs.as_ptr() as *mut IoVec as LPWSABUF;
         let mut bytes = 0;
-        let ret = ws2_32::WSASend(
-            self.as_raw_socket(),
+        let ret = WSASend(
+            self.as_raw_socket() as SOCKET,
             iov_ptr,
-            iovs.len() as winapi::DWORD,
+            iovs.len() as DWORD,
             &mut bytes,
             0,
             overlapped.as_mut(),
             None,
         );
         match ret {
-            winapi::SOCKET_ERROR => Err(last_error()),
+            SOCKET_ERROR => Err(last_error()),
             _ => Ok(bytes as usize),
         }
     }
@@ -394,7 +403,7 @@ where
                 true => {
                     self.pending = false;
                     get_overlapped_result(
-                        nio.get_ref().as_ref().as_raw_socket(),
+                        nio.get_ref().as_ref().as_raw_socket() as SOCKET,
                         &mut self.overlapped,
                     )?;
                 }
@@ -477,7 +486,7 @@ where
         if nio.is_write_ready() {
             if self.pending {
                 self.pending = false;
-                let socket = nio.get_ref().as_ref().as_raw_socket();
+                let socket = nio.get_ref().as_ref().as_raw_socket() as SOCKET;
                 let n = get_overlapped_result(socket, &mut self.overlapped)?;
                 data.skip(n);
                 data.compact();
@@ -668,16 +677,15 @@ where
 }
 
 type ConnectEx = unsafe extern "system" fn(
-    winapi::SOCKET,          // _In_    s,
-    *const winapi::SOCKADDR, // _in_    name,
-    winapi::c_int,           // _In_    namelen,
-    winapi::PVOID,           // _In_opt lpSendBuffer,
-    winapi::DWORD,           // _In_    dwSendDataLength,
-    winapi::LPDWORD,         // _Out_   lpdwBytesSent,
-    winapi::LPOVERLAPPED,    // _In_    lpOverlapped,
-) -> winapi::BOOL;
+    SOCKET,          // _In_    s,
+    *const SOCKADDR, // _in_    name,
+    c_int,           // _In_    namelen,
+    PVOID,           // _In_opt lpSendBuffer,
+    DWORD,           // _In_    dwSendDataLength,
+    LPDWORD,         // _Out_   lpdwBytesSent,
+    LPOVERLAPPED,    // _In_    lpOverlapped,
+) -> BOOL;
 
-#[derive(Debug)]
 enum ConnectState<T> {
     Connecting(Nio<TcpStream, T>, Box<Overlapped>),
     Finishing(Nio<TcpStream, T>, Box<Overlapped>),
@@ -686,7 +694,6 @@ enum ConnectState<T> {
     Done,
 }
 
-#[derive(Debug)]
 pub struct Connect<T> {
     state: ConnectState<T>,
 }
@@ -739,13 +746,13 @@ where
         stream.as_inner().set_nonblocking(true)?;
         let nio = Nio::try_from(T::from(stream))?;
 
-        let connect_ex = CONNECTEX.get(nio.get_ref().as_ref().as_raw_socket())?;
+        let connect_ex = CONNECTEX.get(nio.get_ref().as_ref().as_raw_socket() as SOCKET)?;
         let mut overlapped = Box::new(Overlapped::for_write());
         let success = unsafe {
             (mem::transmute::<_, ConnectEx>(connect_ex))(
-                nio.get_ref().as_ref().as_raw_socket(),
+                nio.get_ref().as_ref().as_raw_socket() as SOCKET,
                 name,
-                len as winapi::c_int,
+                len as c_int,
                 ptr::null_mut(),
                 0,
                 ptr::null_mut(),
@@ -753,7 +760,7 @@ where
             )
         };
         use self::ConnectState::*;
-        match success == winapi::TRUE {
+        match success == TRUE {
             false => {
                 let e = last_error();
                 match e.kind() {
@@ -780,7 +787,10 @@ where
                 Ok(Async::NotReady)
             }
             Finishing(nio, mut overlapped) => if nio.is_write_ready() {
-                get_overlapped_result(nio.get_ref().as_ref().as_raw_socket(), &mut overlapped)?;
+                get_overlapped_result(
+                    nio.get_ref().as_ref().as_raw_socket() as SOCKET,
+                    &mut overlapped,
+                )?;
                 Self::finish_connect(nio.get_ref().as_ref())?;
                 Ok(Async::Ready(Sender(OStream::from(nio))))
             } else {
@@ -795,11 +805,11 @@ where
 
     #[inline]
     fn finish_connect(stream: &TcpStream) -> io::Result<()> {
-        const SO_UPDATE_CONNECT_CONTEXT: winapi::c_int = 0x7010;
+        const SO_UPDATE_CONNECT_CONTEXT: c_int = 0x7010;
         let result = unsafe {
-            ws2_32::setsockopt(
-                stream.as_raw_socket(),
-                winapi::SOL_SOCKET,
+            setsockopt(
+                stream.as_raw_socket() as SOCKET,
+                SOL_SOCKET,
                 SO_UPDATE_CONNECT_CONTEXT,
                 ptr::null(),
                 0,

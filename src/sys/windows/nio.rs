@@ -5,8 +5,11 @@ use std::mem;
 use std::os::windows::io::AsRawSocket;
 use std::rc::Rc;
 
-use winapi;
-use kernel32;
+use winapi::shared::minwindef::{FALSE, UCHAR, ULONG};
+use winapi::shared::ws2def::WSABUF;
+use winapi::um::minwinbase::OVERLAPPED;
+use winapi::um::winbase::SetFileCompletionNotificationModes;
+use winapi::um::winnt::HANDLE;
 
 use reactor::CURRENT_LOOP;
 use sys::{ReadyTasks, Schedule, Token};
@@ -14,20 +17,19 @@ use sys::nio::{Borrow, BorrowMut};
 use sys::windows::poll::{Event, Ops};
 
 pub trait AsRawHandle {
-    fn as_raw_handle(&self) -> winapi::HANDLE;
+    fn as_raw_handle(&self) -> HANDLE;
 }
 
 impl<T: AsRawSocket> AsRawHandle for T {
     #[inline]
-    fn as_raw_handle(&self) -> winapi::HANDLE {
+    fn as_raw_handle(&self) -> HANDLE {
         unsafe { mem::transmute(self.as_raw_socket()) }
     }
 }
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct IoVec {
-    inner: winapi::WSABUF,
+    inner: WSABUF,
 }
 
 unsafe impl Sync for IoVec {}
@@ -37,7 +39,7 @@ impl IoVec {
     pub fn empty() -> &'static [Self] {
         static EMPTY: [IoVec; 1] = [
             IoVec {
-                inner: winapi::WSABUF {
+                inner: WSABUF {
                     len: 0,
                     buf: 0 as *mut i8, // FIXME: ptr::null_mut()
                 },
@@ -51,8 +53,8 @@ impl From<(*const u8, usize)> for IoVec {
     #[inline]
     fn from(slice: (*const u8, usize)) -> Self {
         IoVec {
-            inner: winapi::WSABUF {
-                len: slice.1 as winapi::ULONG,
+            inner: WSABUF {
+                len: slice.1 as ULONG,
                 buf: unsafe { mem::transmute(slice.0) },
             },
         }
@@ -63,8 +65,8 @@ impl<'a> From<&'a [u8]> for IoVec {
     #[inline]
     fn from(slice: &[u8]) -> Self {
         IoVec {
-            inner: winapi::WSABUF {
-                len: slice.len() as winapi::ULONG,
+            inner: WSABUF {
+                len: slice.len() as ULONG,
                 buf: slice.as_ptr() as *mut _,
             },
         }
@@ -75,25 +77,24 @@ impl<'a> From<&'a mut [u8]> for IoVec {
     #[inline]
     fn from(slice: &mut [u8]) -> Self {
         IoVec {
-            inner: winapi::WSABUF {
-                len: slice.len() as winapi::ULONG,
+            inner: WSABUF {
+                len: slice.len() as ULONG,
                 buf: slice.as_ptr() as *mut _,
             },
         }
     }
 }
 
-impl AsMut<winapi::WSABUF> for IoVec {
+impl AsMut<WSABUF> for IoVec {
     #[inline]
-    fn as_mut(&mut self) -> &mut winapi::WSABUF {
+    fn as_mut(&mut self) -> &mut WSABUF {
         &mut self.inner
     }
 }
 
-#[derive(Debug)]
 #[repr(C)]
 pub struct Overlapped {
-    inner: winapi::OVERLAPPED,
+    inner: OVERLAPPED,
     ops: Ops,
 }
 
@@ -120,9 +121,9 @@ impl Overlapped {
     }
 }
 
-impl AsMut<winapi::OVERLAPPED> for Overlapped {
+impl AsMut<OVERLAPPED> for Overlapped {
     #[inline]
-    fn as_mut(&mut self) -> &mut winapi::OVERLAPPED {
+    fn as_mut(&mut self) -> &mut OVERLAPPED {
         &mut self.inner
     }
 }
@@ -221,14 +222,13 @@ where
     }
 
     #[inline]
-    fn register(handle: winapi::HANDLE) -> io::Result<Token> {
-        const FILE_SKIP_COMPLETION_PORT_ON_SUCCESS: winapi::UCHAR = 0x1;
-        const FILE_SKIP_SET_EVENT_ON_HANDLE: winapi::UCHAR = 0x2;
-        const FLAGS: winapi::UCHAR =
-            FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE;
+    fn register(handle: HANDLE) -> io::Result<Token> {
+        const FILE_SKIP_COMPLETION_PORT_ON_SUCCESS: UCHAR = 0x1;
+        const FILE_SKIP_SET_EVENT_ON_HANDLE: UCHAR = 0x2;
+        const FLAGS: UCHAR = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE;
 
-        let success = unsafe { kernel32::SetFileCompletionNotificationModes(handle, FLAGS) };
-        if success == winapi::FALSE {
+        let success = unsafe { SetFileCompletionNotificationModes(handle, FLAGS) };
+        if success == FALSE {
             return Err(io::Error::last_os_error());
         }
 

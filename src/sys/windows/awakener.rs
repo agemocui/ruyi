@@ -2,16 +2,18 @@ use std::cell::UnsafeCell;
 use std::io;
 use std::sync::atomic::Ordering;
 
-use winapi;
-use kernel32;
-use reactor::CURRENT_LOOP;
+use winapi::shared::basetsd::ULONG_PTR;
+use winapi::shared::minwindef::FALSE;
+use winapi::um::ioapiset::PostQueuedCompletionStatus;
+use winapi::um::winnt::HANDLE;
 
+use reactor::CURRENT_LOOP;
 use sys::{AtomicBool, Token};
 use sys::windows::nio::{AsRawHandle, Overlapped};
 
 pub(crate) struct Awakener {
     need_wakeup: AtomicBool,
-    nio: UnsafeCell<Option<(winapi::HANDLE, Token)>>,
+    nio: UnsafeCell<Option<(HANDLE, Token)>>,
     overlapped: UnsafeCell<Overlapped>,
 }
 
@@ -61,14 +63,14 @@ impl Awakener {
         if let Some(ref nio) = (*self.as_nio()).as_ref() {
             let token: usize = nio.1.into();
             let result = unsafe {
-                kernel32::PostQueuedCompletionStatus(
+                PostQueuedCompletionStatus(
                     nio.0,
                     0,
-                    token as winapi::ULONG_PTR,
+                    token as ULONG_PTR,
                     self.as_mut_overlapped().as_mut(),
                 )
             };
-            if result == winapi::FALSE {
+            if result == FALSE {
                 return Err(io::Error::last_os_error());
             }
         }
@@ -76,7 +78,7 @@ impl Awakener {
     }
 
     #[inline]
-    fn as_nio(&self) -> &Option<(winapi::HANDLE, Token)> {
+    fn as_nio(&self) -> &Option<(HANDLE, Token)> {
         unsafe { &*self.nio.get() }
     }
 
@@ -86,7 +88,7 @@ impl Awakener {
     }
 
     #[inline]
-    fn as_mut_nio(&self) -> &mut Option<(winapi::HANDLE, Token)> {
+    fn as_mut_nio(&self) -> &mut Option<(HANDLE, Token)> {
         unsafe { &mut *self.nio.get() }
     }
 }

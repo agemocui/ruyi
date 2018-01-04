@@ -14,46 +14,49 @@ use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
-use winapi;
-use ws2_32;
+use winapi::shared::guiddef::GUID;
+use winapi::shared::minwindef::{DWORD, FALSE, TRUE};
+use winapi::shared::winerror::ERROR_IO_PENDING;
+use winapi::shared::ws2def::SIO_GET_EXTENSION_FUNCTION_POINTER;
+use winapi::um::winsock2::{WSAGetLastError, WSAGetOverlappedResult, WSAIoctl, SOCKET, SOCKET_ERROR};
 
 use sys::windows::nio::Overlapped;
 
 #[inline]
 fn last_error() -> io::Error {
-    let err = unsafe { ws2_32::WSAGetLastError() } as winapi::DWORD;
+    let err = unsafe { WSAGetLastError() } as DWORD;
     match err {
-        winapi::ERROR_IO_PENDING => io::Error::from(io::ErrorKind::WouldBlock),
+        ERROR_IO_PENDING => io::Error::from(io::ErrorKind::WouldBlock),
         _ => io::Error::from_raw_os_error(err as i32),
     }
 }
 
 #[inline]
-fn get_overlapped_result(socket: winapi::SOCKET, overlapped: &mut Overlapped) -> io::Result<usize> {
+fn get_overlapped_result(socket: SOCKET, overlapped: &mut Overlapped) -> io::Result<usize> {
     let mut transferred = 0;
     let mut flags = 0;
     let success = unsafe {
-        ws2_32::WSAGetOverlappedResult(
+        WSAGetOverlappedResult(
             socket,
             overlapped.as_mut(),
             &mut transferred,
-            winapi::FALSE,
+            FALSE,
             &mut flags,
         )
     };
-    match success == winapi::TRUE {
+    match success == TRUE {
         true => Ok(transferred as usize),
         false => Err(last_error()),
     }
 }
 
 struct WsaExtFunc {
-    guid: winapi::GUID,
+    guid: GUID,
     func: AtomicUsize,
 }
 
 static ACCEPTEX: WsaExtFunc = WsaExtFunc {
-    guid: winapi::GUID {
+    guid: GUID {
         Data1: 0xb5367df1,
         Data2: 0xcbac,
         Data3: 0x11cf,
@@ -63,7 +66,7 @@ static ACCEPTEX: WsaExtFunc = WsaExtFunc {
 };
 
 static GET_ACCEPTEX_SOCKADDRS: WsaExtFunc = WsaExtFunc {
-    guid: winapi::GUID {
+    guid: GUID {
         Data1: 0xb5367df2,
         Data2: 0xcbac,
         Data3: 0x11cf,
@@ -73,7 +76,7 @@ static GET_ACCEPTEX_SOCKADDRS: WsaExtFunc = WsaExtFunc {
 };
 
 static CONNECTEX: WsaExtFunc = WsaExtFunc {
-    guid: winapi::GUID {
+    guid: GUID {
         Data1: 0x25a207b9,
         Data2: 0xddf3,
         Data3: 0x4660,
@@ -83,27 +86,27 @@ static CONNECTEX: WsaExtFunc = WsaExtFunc {
 };
 
 impl WsaExtFunc {
-    fn get(&self, socket: winapi::SOCKET) -> io::Result<usize> {
+    fn get(&self, socket: SOCKET) -> io::Result<usize> {
         let mut func = self.func.load(Ordering::Relaxed);
         if func != 0 {
             return Ok(func);
         }
         let mut bytes = 0;
         let result = unsafe {
-            ws2_32::WSAIoctl(
+            WSAIoctl(
                 socket,
-                winapi::SIO_GET_EXTENSION_FUNCTION_POINTER,
+                SIO_GET_EXTENSION_FUNCTION_POINTER,
                 &self.guid as *const _ as *mut _,
-                mem::size_of_val(&self.guid) as winapi::DWORD,
+                mem::size_of_val(&self.guid) as DWORD,
                 &mut func as *mut _ as *mut _,
-                mem::size_of::<usize>() as winapi::DWORD,
+                mem::size_of::<usize>() as DWORD,
                 &mut bytes,
                 ptr::null_mut(),
                 None,
             )
         };
-        if result == winapi::SOCKET_ERROR {
-            let err = unsafe { ws2_32::WSAGetLastError() };
+        if result == SOCKET_ERROR {
+            let err = unsafe { WSAGetLastError() };
             Err(io::Error::from_raw_os_error(err))
         } else {
             self.func.store(func, Ordering::Relaxed);
